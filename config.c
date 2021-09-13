@@ -457,6 +457,10 @@ int compositLine(Builder *C, ConfigLine *L){
             !strcmp(C->_2D[this_num].name_y, C->_2D[j].name_x))){
           --C->num_2D;
           break;}}
+/* SRW start */
+    } else if(!strcasecmp(L->key[i],"param_y")){
+      return C->num_2D;
+/* SRW end */
     }
   }
   fprintf(stderr, "malt: Internal error at %s:%d\n", __FILE__, __LINE__);
