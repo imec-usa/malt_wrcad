@@ -1,0 +1,26 @@
+* first line is assumed to be a comment
+.control
+*zero indexed array. indexed with itime below
+*units are ps as defined by the .tran line in the .cir file
+compose myt values 90 344 490 544 690 744 890
+* minimum phase advance when it is supposed to be on is 4.5*2*pi=28.3 rad
+itime=2
+dowhile itime < 7
+jtime=itime-1
+if (v(phi.Xb2)[$&myt[$&itime]]-v(phi.Xb2)[$&myt[$&jtime]]) < 28.3
+echo Generated not enough phase in range $&myt[$&jtime] to $&myt[$&itime]
+failed=1
+end
+itime=itime+2
+end
+* maximum phase advance when it is supposed to be off is 3 rad
+itime=1
+dowhile itime < 6
+jtime=itime-1
+if (v(phi.Xb2)[$&myt[$&itime]]-v(phi.Xb2)[$&myt[$&jtime]]) > 3
+echo Generated too much phase in range $&myt[$&jtime] to $&myt[$&itime]
+failed=1
+end
+itime=itime+2
+end
+.endc

@@ -1,0 +1,21 @@
+Known bugs
+==========
+
+* Malt returns 0 in most cases even when it exits due to an error
+* Most malloc'd memory is never freed (Valgrind)
+* WRspice 4.3.12 segfaults sometimes with hierarchical netlists (reported to Whitely)
+
+Fixed bugs
+==========
+
+* The behavior of getConfigFileList when you are not in a subdirectory of your home directory
+  depends on the lexicographical ordering of your home directory relative to the current directory
+* dumpConfiguration prints some values that are uninitialized (Valgrind)
+* Can't compile under gcc 4
+* Generated malt.config cannot be parsed (ryanh)
+* Internal error at config.c:407 triggers although it shouldn't (ryanh)
+* Memory unsafety due to incorrectly sized malloc's for pc passed into addpoint_corners, when
+  vect_free and simp_free are uncommented in corners.c (Valgrind)
+* Hypersphere is misspelled Hypershpere
+* Segfault on misspelled / absent node name (notmatch not checked at define.c:238) (Harms)
+* Segfault when only one checked node in the config file (Q)

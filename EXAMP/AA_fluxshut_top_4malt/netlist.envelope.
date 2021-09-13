@@ -1,0 +1,13 @@
+* the envelope of acceptable values for each trace
+* called by binsearch generic
+.control
+* node math is legal, i.e. v(1)-v(2)
+* ...so long as the nodes also appear separately
+* lo and hi are the envelope definition
+
+set node_hi = ( tran1.hi0  tran1.hi1  tran1.hi2 )
+set node_lo = ( tran1.lo0  tran1.lo1  tran1.lo2 )
+compose step_value values  97 96 96 96 96 96 96 96 96 96
+load netlist.envelope
+setplot constants
+.endc

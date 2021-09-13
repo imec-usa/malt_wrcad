@@ -1,0 +1,17 @@
+
+*.malt.run: called by *.call
+*run simulation and print node_name vectors to a file
+.control
+
+source $pname
+if ($#param == 1)
+  $param
+end
+source $circuit
+
+run
+write $n_return $node_name
+
+set noaskquit
+
+.endc

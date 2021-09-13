@@ -1,0 +1,13 @@
+*netlist.run
+.control
+source netlist.nominals
+source netlist.cir
+run
+plot \
+v(phi.Xb0) \
+v(phi.Xb0.XI1) \
+v(phi.Xb1.XI1) \
+v(phi.Xb0.XI12) \
+v(phi.Xb1.XI12)
+set noaskquit
+.endc

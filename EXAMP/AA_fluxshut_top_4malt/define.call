@@ -1,0 +1,28 @@
+* define.call
+
+.control
+
+set circuit = ( netlist.cir )
+set param   = ( no file )
+set passf   = ( no file )
+set pname   = ( netlist.pname.d )
+set return  = ( define.return )
+set node_name = ( v(phi.Xb0)  v(phi.Xb0.XI1)  v(phi.Xb1.XI12) )
+dashc = 0
+set n_return  = ( netlist.nom )
+param[1]=1.000000
+param[2]=1.000000
+param[3]=0.000000
+param[4]=1.000000
+param[5]=0.080000
+param[6]=5.000000
+param[7]=1.000000
+param[8]=1.000000
+param[9]=0.018000
+param[10]=0.070000
+param[11]=0.040000
+param[12]=30.000000
+
+source .malt.run
+
+.endc

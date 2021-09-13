@@ -1,0 +1,16 @@
+*netlist
+.control
+*Parameter values
+Xlcomp=1.0
+Xjcomp=1.0
+Xac =1.0
+Xpdc =1.0
+inoff =0.0
+inipp =1.0
+b0 =0.080
+l0 =5.0
+b1 =0.018
+b2 =0.070
+b34 =0.040
+l45 =30.0
+.endc
