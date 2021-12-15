@@ -1,0 +1,6 @@
+# diff    --stat: 24 files changed, 2659 insertions(+), 2176 deletions(-)
+# diff -w --stat: 24 files changed, 1245 insertions(+), 762 deletions(-)
+BreakBeforeBraces: Linux #          1301 insertions(+), 727 deletions(-)
+ColumnLimit: 100 # 23 files changed, 737 insertions(+), 476 deletions(-)
+AlignEscapedNewlines: Left
+SpacesBeforeTrailingComments: 2

@@ -13,6 +13,6 @@ typedef struct space {
 
 double maltspace(double, const Configuration *, int);
 double physspace(double, const Configuration *, int);
-int    initspace(Configuration *, Space *);
+int initspace(Configuration *, Space *);
 
 #endif

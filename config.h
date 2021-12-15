@@ -99,12 +99,12 @@ typedef struct config {
 
   FILE *log;
 
-  int  num_nodes;
+  int num_nodes;
   const Node *nodes;
 
-  int   num_params;
-  int   num_params_corn;
-  int   num_params_all;
+  int num_params;
+  int num_params_corn;
+  int num_params_all;
   Param *params;
 
   int num_2D;

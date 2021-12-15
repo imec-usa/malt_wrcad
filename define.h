@@ -2,7 +2,7 @@
 #ifndef DEFINE
 #define DEFINE
 
-//typedef struct config Configuration;
+// typedef struct config Configuration;
 #include "config.h"
 
 typedef struct data {
@@ -15,6 +15,6 @@ typedef struct data {
   int dtlength;
 } Data;
 
-int call_def(Configuration*);
+int call_def(Configuration *);
 
 #endif

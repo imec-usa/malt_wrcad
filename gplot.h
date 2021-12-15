@@ -2,7 +2,7 @@
 #ifndef GPLOT
 #define GPLOT
 
-//typedef struct config Configuration;
+// typedef struct config Configuration;
 #include "config.h"
 #include "space.h"
 

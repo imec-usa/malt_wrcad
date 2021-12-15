@@ -16,7 +16,8 @@ int spice_dice(Configuration *);
 int generic_spice_files(void);
 
 /* generic spice file .malt.run */
-#define MALT_RUN "\n\
+#define MALT_RUN \
+  "\n\
 *.malt.run: called by *.call\n\
 *run simulation and print node_name vectors to a file\n\
 .control\n\
@@ -39,7 +40,8 @@ set noaskquit\n\
 /* ***** checking pc everytime is highly inefficent for corner vector margins analysis ***** */
 /* the binary search has been modified to handle multiply/divide */
 /* (instead of plus/minus) in log space */
-#define MALT_BINSEARCH "\n\
+#define MALT_BINSEARCH \
+  "\n\
 *.malt.binsearch: called by *.call\n\
 *find the operating boundary between the two points pc and po\n\
 *if accuracy=0, see if pc parameter set is pass or fail\n\
@@ -133,7 +135,8 @@ quit\n\
 "
 
 /* generic spice file .malt.passfail */
-#define MALT_PASSFAIL "\n\
+#define MALT_PASSFAIL \
+  "\n\
 *.malt.passfail: called by .malt.binsearch\n\
 .control\n\
 \n\

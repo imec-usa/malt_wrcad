@@ -16,3 +16,5 @@ all: ./build/Makefile
 clean:
 	@  rm -rf build
 
+format:
+	@  ./run-clang-format.py -i *.[ch]
