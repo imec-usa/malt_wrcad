@@ -1,3 +1,4 @@
+// vi: ts=2 sts=2 sw=2 et tw=100
 /* For the numerical recipes routines */
 #include <stdio.h>
 #include <stdlib.h>

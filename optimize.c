@@ -1,3 +1,4 @@
+// vi: ts=2 sts=2 sw=2 et tw=100
 /* optimization function */
 #include "optimize.h"
 #include "call_spice.h"

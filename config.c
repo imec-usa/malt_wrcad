@@ -1,3 +1,4 @@
+// vi: ts=2 sts=2 sw=2 et tw=100
 /* parse configuraton files */
 
 /* *** need to have a flag for each composit line field */

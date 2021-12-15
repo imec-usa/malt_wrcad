@@ -1,3 +1,4 @@
+// vi: ts=2 sts=2 sw=2 et tw=100
 /* calculate corner-vector margins */
 #include "corners.h"
 #include "call_spice.h"
