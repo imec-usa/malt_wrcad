@@ -58,16 +58,16 @@ int margins2(Configuration *C) {
   if (C->options._2D_iter < 3) {
     C->options._2D_iter=3;
   }
-  angle = malloc((C->options._2D_iter+1)*sizeof *angle); // listener-epilepsy-inulases
-  pointsx = malloc((C->num_2D)*sizeof *pointsx); // caracolite-ejaculatory-nugacities
-  pointsy = malloc((C->num_2D)*sizeof *pointsy); // juvenilities-archegony-toplighted
+  angle = malloc((C->options._2D_iter+1)*sizeof *angle); // mem:listener
+  pointsx = malloc((C->num_2D)*sizeof *pointsx); // mem:caracolite
+  pointsy = malloc((C->num_2D)*sizeof *pointsy); // mem:juvenilities
   for (i=0; C->num_2D > i; ++i){
-    pointsx[i] = malloc((C->options._2D_iter+1)*sizeof *pointsx[i]); // anacahuite-cymric-percale
-    pointsy[i] = malloc((C->options._2D_iter+1)*sizeof *pointsy[i]);} // nonverticalness-manganate-smogless
+    pointsx[i] = malloc((C->options._2D_iter+1)*sizeof *pointsx[i]); // mem:anacahuite
+    pointsy[i] = malloc((C->options._2D_iter+1)*sizeof *pointsy[i]);} // mem:nonverticalness
   /* create pname file */
   pname(C);
-  double *pc = malloc((C->num_params + C->num_params_corn) * sizeof *pc); // restrip-gnathions-caffoy
-  double *direction = malloc(C->num_params * sizeof *direction); // overproficient-noncognizantly-blats
+  double *pc = malloc((C->num_params + C->num_params_corn) * sizeof *pc); // mem:restrip
+  double *direction = malloc(C->num_params * sizeof *direction); // mem:overproficient
   for (i=0; C->num_params > i; ++i)
     pc[i] = S[i].centerpnt;
   /* assign param_x and param_y */
@@ -170,15 +170,15 @@ int margins2(Configuration *C) {
   unlink(C->file_names.iter);
   unlink(C->file_names.pname);
   //free(S); // TODO: needed?
-  free(angle); // listener-epilepsy-inulases
+  free(angle); // mem:listener
   for (i=0; C->num_2D > i; ++i) {
-    free(pointsx[i]); // anacahuite-cymric-percale
-    free(pointsy[i]); // nonverticalness-manganate-smogless
+    free(pointsx[i]); // mem:anacahuite
+    free(pointsy[i]); // mem:nonverticalness
   }
-  free(pointsx); // caracolite-ejaculatory-nugacities
-  free(pointsy); // juvenilities-archegony-toplighted
-  free(pc); // restrip-gnathions-caffoy
-  free(direction); // overproficient-noncognizantly-blats
+  free(pointsx); // mem:caracolite
+  free(pointsy); // mem:juvenilities
+  free(pc); // mem:restrip
+  free(direction); // mem:overproficient
   return all_good;
 }
 

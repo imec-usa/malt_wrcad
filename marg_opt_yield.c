@@ -68,7 +68,7 @@ typedef struct addpoint_state {
 static pid_t start_addpoint(const Configuration *C, const Space *S, addpoint_t *state, const double *pc,
                             const double *direction, int ord) {
 #define PO_SHIFT C->options.binsearch_accuracy*0.0001
-  double *po = malloc(N * sizeof *po); // hyperplastic-padcluoth-outrances
+  double *po = malloc(N * sizeof *po); // mem:hyperplastic
   /* need to know the starting point (pc[..]) and the search direction (direction[..]) */
 
   /* assign values for this corner */
@@ -104,11 +104,11 @@ static pid_t start_addpoint(const Configuration *C, const Space *S, addpoint_t *
   }
   double dist = sqrt(dist2)/C->options.binsearch_accuracy;
 
-  state->returnn = resprintf(NULL, "%s.%c.%d.return", C->command, C->function, state->ord); // kamleika-circe-pianofortist
-  state->call = resprintf(NULL, "%s.%c.%d.call", C->command, C->function, state->ord); // workmanships-trichomaphyte-avoidless
+  state->returnn = resprintf(NULL, "%s.%c.%d.return", C->command, C->function, state->ord); // mem:kamleika
+  state->call = resprintf(NULL, "%s.%c.%d.call", C->command, C->function, state->ord); // mem:workmanships
   /* write .call file, call spice */
   state->pid = start_spice(C, dist, state->pc, po, state->call, state->returnn);
-  free(po); // hyperplastic-padcluoth-outrances
+  free(po); // mem:hyperplastic
   return state->pid;
 #undef PO_SHIFT
 }
@@ -156,9 +156,9 @@ static int addpoint_done(const Configuration *C, double *pr_temp, int *ord, addp
   fclose(fp);
   unlink(state->call);
   unlink(state->returnn);
-  free(state->call); // workmanships-trichomaphyte-avoidless
+  free(state->call); // mem:workmanships
   state->call = NULL;
-  free(state->returnn); // kamleika-circe-pianofortist
+  free(state->returnn); // mem:kamleika
   state->returnn = NULL;
   free(state->pc);
   state->pc = NULL;
@@ -215,7 +215,7 @@ double addpoint_corners(const Configuration *C, const Space *S, corner_t *cornmi
 
   // clean up the processes as they finish (and replace them with new ones)
   double f_min = INFINITY; // guaranteed to be greater than f at least once
-  double *pr_temp = malloc(N * sizeof *pr_temp); // nazifying-jo-astern
+  double *pr_temp = malloc(N * sizeof *pr_temp); // mem:astern
   while (job < num_corn) {
     // wait for any wrspice process to finish
     int status;
@@ -330,7 +330,7 @@ double addpoint_corners(const Configuration *C, const Space *S, corner_t *cornmi
       }
     }
   }
-  free(pr_temp); // nazifying-jo-astern
+  free(pr_temp); // mem:astern
 
   /* return the distance from the origin in units of sigma, for whoever wants it */
   return f_min;
@@ -347,8 +347,8 @@ int margins(Configuration *C, const Space *S, double *prhi, double *prlo)
 {
   int i, j;
   int ret = 0;
-  double *pc = malloc((N+K) * sizeof *pc); // lumberer-knappers-rhizopodous
-  double *direction = malloc(N * sizeof *direction); // diallings-subturriculate-mainliners
+  double *pc = malloc((N+K) * sizeof *pc); // mem:lumberer
+  double *direction = malloc(N * sizeof *direction); // mem:diallings
   double *pr = malloc(N * sizeof *pr);
   corner_t cornmin[2];
 
@@ -446,8 +446,8 @@ int margins(Configuration *C, const Space *S, double *prhi, double *prlo)
   }
   ret = 1;
 fail:
-  free(pc); // lumberer-knappers-rhizopodous
-  free(direction); // diallings-subturriculate-mainliners
+  free(pc); // mem:lumberer
+  free(direction); // mem:diallings
   return ret;
 }
 
@@ -460,8 +460,8 @@ int tmargins(Configuration *C, const Space *S)
   /* Trace Margins */
   lprintf(C, "\nTrace Margins");
   lprintf(C, "\nParameter                Low     Nominal       High\n");
-  double *pc = malloc((N+K) * sizeof *pc); // orchestrating-recalcitrancy-irate
-  double *direction = malloc(N * sizeof *direction); // rephase-jostles-unpilfered
+  double *pc = malloc((N+K) * sizeof *pc); // mem:orchestrating
+  double *direction = malloc(N * sizeof *direction); // mem:rephase
   double *pr = malloc(N * sizeof *pr);
   double *prlo = malloc(N * sizeof *prlo);
   double *prhi = malloc(N * sizeof *prhi);
@@ -592,8 +592,8 @@ int tmargins(Configuration *C, const Space *S)
   fclose(fp);
   ret = 1;
 fail:
-  free(pc); // orchestrating-recalcitrancy-irate
-  free(direction); // rephase-jostles-unpilfered
+  free(pc); // mem:orchestrating
+  free(direction); // mem:rephase
   free(pr);
   free(prlo);
   free(prhi);
@@ -606,17 +606,17 @@ Plane **plane_malloc(Plane **plane, int *plnmemory, int inc, int dim)
   Plane **new;
 
   /* from 0 to plnmemory-1 */
-  if((new = realloc(plane, (*plnmemory+inc) * sizeof *new)) == NULL) { // alacrity-detects-vouching
+  if((new = realloc(plane, (*plnmemory+inc) * sizeof *new)) == NULL) { // mem:alacrity
     return NULL;}
   /* from 0 to plnmemory-1 */
   for(i=*plnmemory;i < (*plnmemory+inc);i++){
-    if((new[i] = malloc(sizeof **new)) == NULL) { // pathogenicity-cosmopolitanise-pyrotartrate
+    if((new[i] = malloc(sizeof **new)) == NULL) { // mem:pathogenicity
       return NULL;}
     /* from 0 to dim-1 */
-    if((new[i]->points = malloc(dim * sizeof *new[i]->points)) == NULL) { // impresting-lobbed-advocatess
+    if((new[i]->points = malloc(dim * sizeof *new[i]->points)) == NULL) { // mem:impresting
       return NULL;}
     /* from 0 to dim-1 */
-    if((new[i]->a = malloc(dim * sizeof *new[i]->a)) == NULL) { // unlugubrious-sprightlily-plinks
+    if((new[i]->a = malloc(dim * sizeof *new[i]->a)) == NULL) { // mem:unlugubrious
       return NULL;}}
   *plnmemory +=inc;
   return new;
@@ -627,11 +627,11 @@ void plane_free(Plane **plane, int plnmemory)
   int i;
 
   for(i=0;i < plnmemory;i++){
-    free(plane[i]->points); // impresting-lobbed-advocatess
-    free(plane[i]->a); // unlugubrious-sprightlily-plinks
-    free(plane[i]); // pathogenicity-cosmopolitanise-pyrotartrate
+    free(plane[i]->points); // mem:impresting
+    free(plane[i]->a); // mem:unlugubrious
+    free(plane[i]); // mem:pathogenicity
   }
-  free(plane); // alacrity-detects-vouching
+  free(plane); // mem:alacrity
 }
 
 double **margpnts_malloc(double **margpnts, int *pntmemory, int inc, int dim)
@@ -640,12 +640,12 @@ double **margpnts_malloc(double **margpnts, int *pntmemory, int inc, int dim)
   double **new;
 
   /* from 0 to pntmemory-1 */
-  if((new = realloc(margpnts, (*pntmemory+inc) * sizeof *new)) == NULL){ // contemporaneous-japaconine-calzoons
+  if((new = realloc(margpnts, (*pntmemory+inc) * sizeof *new)) == NULL){ // mem:contemporaneous
     return NULL;}
   /* from 0 to pntmemory-1 */
   for(i=*pntmemory;i < (*pntmemory+inc);i++){
     /* from 0 to dim-1 */
-    if((new[i] = malloc(dim * sizeof *new[i])) == NULL){ // precisions-kythes-septocosta
+    if((new[i] = malloc(dim * sizeof *new[i])) == NULL){ // mem:precisions
       return NULL;}}
   *pntmemory +=inc;
   return new;
@@ -656,8 +656,8 @@ void margpnts_free(double **margpnts, int pntmemory)
   int i;
 
   for(i=0;i < pntmemory;i++)
-    free(margpnts[i]); // precisions-kythes-septocosta
-  free(margpnts); // contemporaneous-japaconine-calzoons
+    free(margpnts[i]); // mem:precisions
+  free(margpnts); // mem:contemporaneous
 }
 
 void intpickpnts(short *pntstack, Configuration *C, const Space *S, int depth, Plane **plane,
@@ -753,9 +753,9 @@ int center(Configuration *C, Space *S, Plane **plane, int *tang, int plncount, d
 
   /* *** is it wasteful to keep allocating over and over again? *** */
   /* allocate local vector and matrix */
-  tab=matrix(1,N+3,1,plncount+1+2*N); // albronze-unctuosity-passable
-  left=ivector(1,N+1); // isolative-nidificate-vectorizing
-  right=ivector(1,plncount+2*N); // intrusional-speltoid-unspeedy
+  tab=matrix(1,N+3,1,plncount+1+2*N); // mem:albronze
+  left=ivector(1,N+1); // mem:isolative
+  right=ivector(1,plncount+2*N); // mem:intrusional
   /* inscribe the sphere */
   /* initialize the input tabeau */
   for (y=0; N >= y; ++y)
@@ -792,9 +792,9 @@ int center(Configuration *C, Space *S, Plane **plane, int *tang, int plncount, d
   tangent=x;
  Bailed:
   /* free local memory */
-  free_matrix(tab,1,N+3,1,plncount+1+2*N); // albronze-unctuosity-passable
-  free_ivector(left,1,N+1); // isolative-nidificate-vectorizing
-  free_ivector(right,1,plncount+2*N); // intrusional-speltoid-unspeedy
+  free_matrix(tab,1,N+3,1,plncount+1+2*N); // mem:albronze
+  free_ivector(left,1,N+1); // mem:isolative
+  free_ivector(right,1,plncount+2*N); // mem:intrusional
   return tangent;
 }
 
@@ -808,11 +808,11 @@ int findface(int dim, double *facecenter, Plane **plane, int *tang, int plncount
 
   /* *** is it wasteful to keep allocating over and over again? *** */
   /* allocate local vector and matrix */
-  tab=matrix(1,dim+3,1,dim+3); // tactus-gustfully-heminee
-  left=ivector(1,dim+1); // filets-tarpapered-vasocorona
-  right=ivector(1,dim+2); // retroreflector-soldierly-feminality
-  sine=vector(1,dim+1); // females-knaur-scratchiest
-  intsect=ivector(1,dim+1); // massula-gnat-trisulcated
+  tab=matrix(1,dim+3,1,dim+3); // mem:tactus
+  left=ivector(1,dim+1); // mem:filets
+  right=ivector(1,dim+2); // mem:retroreflector
+  sine=vector(1,dim+1); // mem:females
+  intsect=ivector(1,dim+1); // mem:massula
   /* find largest of the tangetial faces */
   for (i=0; tangent > i; ++i) {
 /*   for (i=0; dim+1-pin > i; ++i) { */
@@ -867,11 +867,11 @@ int findface(int dim, double *facecenter, Plane **plane, int *tang, int plncount
                 facecenter[y-1]=-tab[1][x+1];}}}
   }
   /* free local memory */
-  free_matrix(tab,1,dim+3,1,dim+3); // tactus-gustfully-heminee
-  free_ivector(left,1,dim+1); // filets-tarpapered-vasocorona
-  free_ivector(right,1,dim+2); // retroreflector-soldierly-feminality
-  free_vector(sine,1,dim+1); // females-knaur-scratchiest
-  free_ivector(intsect,1,dim+1); // massula-gnat-trisulcated
+  free_matrix(tab,1,dim+3,1,dim+3); // mem:tactus
+  free_ivector(left,1,dim+1); // mem:filets
+  free_ivector(right,1,dim+2); // mem:retroreflector
+  free_vector(sine,1,dim+1); // mem:females
+  free_ivector(intsect,1,dim+1); // mem:massula
   return face;
 }
 

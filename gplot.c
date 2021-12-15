@@ -36,7 +36,7 @@ void plot2(Configuration *C, Space *S) {
   FILE *strm;
 
   /* write the gnuplot script to a file so it can be user-modified later */
-  char *gnuplot_script = resprintf(NULL, "%s.2gnu", C->command); // dispiece-unanchor-adjectives
+  char *gnuplot_script = resprintf(NULL, "%s.2gnu", C->command); // mem:dispiece
   if ((fp=fopen(gnuplot_script,"w")) == NULL) {
     fprintf(stderr,"Can't write to the '%s' file",gnuplot_script);
     exit(EXIT_FAILURE);
@@ -84,5 +84,5 @@ void plot2(Configuration *C, Space *S) {
     fprintf(strm,"load '%s'\n", gnuplot_script);
     pclose(strm);
   }
-  free(gnuplot_script); // dispiece-unanchor-adjectives
+  free(gnuplot_script); // mem:dispiece
 }

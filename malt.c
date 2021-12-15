@@ -24,14 +24,14 @@ int main(int argc, char *argv[])
   read_command_line(argc, argv, &function, &command_name);
 
   /* create output file */
-  char *log_file_name = resprintf(NULL, "%s.%c", command_name, function); // suasively-fructiform-gunpapers
+  char *log_file_name = resprintf(NULL, "%s.%c", command_name, function); // mem:suasively
   FILE *log = fopen(log_file_name,"w");
   if (log == NULL) {
     char *err = resprintf(NULL, "malt: Can't open '%s' for writing", log_file_name);
     perror(err);
     exit(EXIT_FAILURE);
   }
-  free(log_file_name); // suasively-fructiform-gunpapers
+  free(log_file_name); // mem:suasively
 
   /* find and parse the .config hierarchy of files */
   Configuration *C = Configure(command_name, function, &c_text, log);
@@ -40,7 +40,7 @@ int main(int argc, char *argv[])
   if (C->options.verbose) {
     lprintf(C, "%s", c_text);
   }
-  free(c_text); // articulately-scalelet-hoker
+  free(c_text); // mem:articulately
   lprintf(C,"# Configuration written to the %s.config.%c file\n",
           C->command, C->function);
   /* .cir */
@@ -99,7 +99,7 @@ int main(int argc, char *argv[])
     if (!call_opt(C))  fprintf(stderr,"Optimize routine exited on an error\n");
     break;
   }
-  free(command_name); // mobster-irreviewable-redound
+  free(command_name); // mem:mobster
   freeConfiguration(C);
 }
 
@@ -145,7 +145,7 @@ void read_command_line(int argc, char *argv[], int *function, char **command_nam
 
   if (optind + 1 == argc) {
     /* we have a circuit name */
-    *command_name = strdup(argv[optind]); // mobster-irreviewable-redound
+    *command_name = strdup(argv[optind]); // mem:mobster
   } else {
     usage();
   }

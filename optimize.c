@@ -32,8 +32,8 @@ static int optimize(Configuration *C, Space *S, const double *prhi, const double
   int match, ii;
   int all_good=1;
   double *improve;
-  double *pc = malloc((N + C->num_params_corn) * sizeof *pc); // unwomanish-resurrect-upswallow
-  double *direction = malloc(N * sizeof *direction); // bergs-hemiplankton-bestove
+  double *pc = malloc((N + C->num_params_corn) * sizeof *pc); // mem:unwomanish
+  double *direction = malloc(N * sizeof *direction); // mem:bergs
   double *pr = malloc(N * sizeof *pr);
 
   /* Exceptions */
@@ -75,19 +75,19 @@ static int optimize(Configuration *C, Space *S, const double *prhi, const double
   max_iterate=32767; // because pntstack is of type [signed] short, which is plenty
 
   /* memory allocation */
-  tang = malloc((N+1) * sizeof *tang); // quiets-sorning-sols
-  facecenter = malloc(N * sizeof *facecenter); // intertrafficked-apertured-distorter
-  vect       = malloc(N * sizeof *vect); // isostere-ratsbanes-juncus
-  pntstack   = malloc(N * sizeof *pntstack); // diaheliotropically-biosynthetically-oestrum
-  improve    = malloc((C->options.o_min_iter) * sizeof *improve); // knackwursts-toxicophidia-avital
+  tang = malloc((N+1) * sizeof *tang); // mem:quiets
+  facecenter = malloc(N * sizeof *facecenter); // mem:intertrafficked
+  vect       = malloc(N * sizeof *vect); // mem:isostere
+  pntstack   = malloc(N * sizeof *pntstack); // mem:diaheliotropically
+  improve    = malloc((C->options.o_min_iter) * sizeof *improve); // mem:knackwursts
   /* allocate first number of planes */
   pinc = (1 << N) + 1000; // =2**N+1000
-  if ((plane = plane_malloc(plane,&plnmemory,pinc,N)) == NULL){ // nucivorous-lonesomenesses-ricketiness
+  if ((plane = plane_malloc(plane,&plnmemory,pinc,N)) == NULL){ // mem:nucivorous
     perror("hurled whilest allocating planes\n");
     exit(EXIT_FAILURE);
   }
   minc=2*N+100;
-  margpnts = margpnts_malloc(margpnts,&pntmemory,minc,N); // crystallic-charnu-procourt
+  margpnts = margpnts_malloc(margpnts,&pntmemory,minc,N); // mem:crystallic
   /* initialize */
 
   /* store margins */
@@ -149,7 +149,7 @@ static int optimize(Configuration *C, Space *S, const double *prhi, const double
         }
         /* make sure there's room to store the new point */
         if(pntcount + 1 >= pntmemory)
-          margpnts = margpnts_malloc(margpnts, &pntmemory, C->num_params*2, C->num_params); // crystallic-charnu-procourt
+          margpnts = margpnts_malloc(margpnts, &pntmemory, C->num_params*2, C->num_params); // mem:crystallic
         /* flag plane if not convex */
         if (addpoint_corners(C, S, NULL, margpnts[pntcount], pc, direction) == 0.0) {
           plane[big]->flag=1;
@@ -182,7 +182,7 @@ static int optimize(Configuration *C, Space *S, const double *prhi, const double
                 /* allocate more planes in memory */
                 if (plncount == plnmemory) {
                   pinc=plncount/3 + 1; // 30% more everytime
-                  if ((plane = plane_malloc(plane,&plnmemory,pinc,N)) == NULL) { // nucivorous-lonesomenesses-ricketiness
+                  if ((plane = plane_malloc(plane,&plnmemory,pinc,N)) == NULL) { // mem:nucivorous
                     perror("No more memory\n");
                     exit(EXIT_FAILURE);
                   }
@@ -307,15 +307,15 @@ static int optimize(Configuration *C, Space *S, const double *prhi, const double
   }
   /* memory unallocation */
  cleanup:
-  free(tang); // quiets-sorning-sols
-  free(facecenter); // intertrafficked-apertured-distorter
-  free(vect); // isostere-ratsbanes-juncus
-  free(pntstack); // diaheliotropically-biosynthetically-oestrum
-  free(improve); // knackwursts-toxicophidia-avital
-  plane_free(plane, plnmemory); // nucivorous-lonesomenesses-ricketiness
-  margpnts_free(margpnts,pntmemory); // crystallic-charnu-procourt
-  free(pc); // unwomanish-resurrect-upswallow
-  free(direction); // bergs-hemiplankton-bestove
+  free(tang); // mem:quiets
+  free(facecenter); // mem:intertrafficked
+  free(vect); // mem:isostere
+  free(pntstack); // mem:diaheliotropically
+  free(improve); // mem:knackwursts
+  plane_free(plane, plnmemory); // mem:nucivorous
+  margpnts_free(margpnts,pntmemory); // mem:crystallic
+  free(pc); // mem:unwomanish
+  free(direction); // mem:bergs
   free(pr);
   return all_good;
 }

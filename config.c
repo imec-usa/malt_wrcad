@@ -130,35 +130,35 @@ static void builder_debug(const Builder *B,FILE *fp){
 }
 
 static void _2D_drop(_2D *ptr) {
-  free((void *)ptr->name_x); // schizzo-carabineros-outvalued
+  free((void *)ptr->name_x); // mem:schizzo
   ptr->name_x = NULL;
-  free((void *)ptr->name_y); // foreconsent-hyperbolic-theophilist
+  free((void *)ptr->name_y); // mem:foreconsent
   ptr->name_y = NULL;
 }
 
 static void param_drop(Param *ptr) {
-  free((void *)ptr->name); // reminiscer-caramboled-disburdening
+  free((void *)ptr->name); // mem:reminiscer
   ptr->name = NULL;
 }
 
 static void node_drop(Node *nptr) {
-  free((void *)nptr->name); // sunglow-gunline-eraser
+  free((void *)nptr->name); // mem:sunglow
   nptr->name = NULL;
 }
 
 void freeConfiguration(Configuration *C)
 {
-  free(C->file_names.circuit); // tectospondylous-erodability-empyreuma
-  free(C->file_names.param); // stairwork-heliophotography-licente
-  free(C->file_names.passf); // toners-cephalomotor-comburivorous
-  free(C->file_names.envelope); // cool-mesorectums-vicugnas
-  free(C->file_names.config); // synurae-handmaids-myelosuppressions
-  free(C->file_names.env_call); // semishady-unloath-tragicomical
-  free(C->file_names.plot); // federalizes-spawny-trooper
-  free(C->file_names.iter); // myrcene-unallusively-cuerda
-  free(C->file_names.pname); // physnomy-soppy-hypothyreosis
-  free(C->extensions.which_trace); // intratubal-upchaunce-underage
-  free((void *)C->options.spice_call_name); // descendentalism-crenae-rationalisation
+  free(C->file_names.circuit); // mem:tectospondylous
+  free(C->file_names.param); // mem:stairwork
+  free(C->file_names.passf); // mem:toners
+  free(C->file_names.envelope); // mem:cool
+  free(C->file_names.config); // mem:synurae
+  free(C->file_names.env_call); // mem:semishady
+  free(C->file_names.plot); // mem:federalizes
+  free(C->file_names.iter); // mem:myrcene
+  free(C->file_names.pname); // mem:physnomy
+  free(C->extensions.which_trace); // mem:intratubal
+  free((void *)C->options.spice_call_name); // mem:descendentalism
 
   /* FIXME: add this part when we can guarantee log has been opened ~ntj
   fclose(C->log);
@@ -167,19 +167,19 @@ void freeConfiguration(Configuration *C)
   for (int n = 0; n < C->num_nodes; ++n) {
     node_drop((Node *)&C->nodes[n]);
   }
-  free((void *)C->nodes); // anathematise-intenancy-sublimating
+  free((void *)C->nodes); // mem:anathematise
 
   for (int p = 0; p < C->num_params_all; ++p) {
     param_drop((Param *)&C->params[p]);
   }
-  free((void *)C->params); // restringer-unlustier-stairhead
+  free((void *)C->params); // mem:restringer
 
   for (int t = 0; t < C->num_2D; ++t) {
     _2D_drop(&C->_2D[t]);
   }
-  free(C->_2D); // hypersexual-junkerish-flashguns
+  free(C->_2D); // mem:hypersexual
 
-  free(C); // circumgyrate-semicylinder-keypunching
+  free(C); // mem:circumgyrate
 }
 
 void builder_init(Builder *C){
@@ -233,10 +233,10 @@ void builder_init(Builder *C){
   C->extensions.config   = ".config";
   C->extensions.plot     = ".plot";
   /* pretty weak */
-  C->extensions.which_trace = malloc(LINE_LENGTH); // intratubal-upchaunce-underage
+  C->extensions.which_trace = malloc(LINE_LENGTH); // mem:intratubal
   /* options */
   C->options.binsearch_accuracy = 0.1;
-  C->options.spice_call_name = strdup("wrspice"); // descendentalism-crenae-rationalisation
+  C->options.spice_call_name = strdup("wrspice"); // mem:descendentalism
   C->options.verbose = 0;
   C->options.threads = 16; // default # threads: 16
   C->options.max_subprocesses = 0; // default # jobs: unlimited
@@ -307,12 +307,12 @@ int interpretLine(ConfigLine *L, char *buf, int index){
   /* chop at first equal sign */
   kptr=buf;  kptr1 = (char *)strchr(kptr,'='); *kptr1='\0';
   remove_white_space(kptr);
-  L->key[index] = strdup(kptr); // smutchier-purify-holoku
+  L->key[index] = strdup(kptr); // mem:smutchier
 
   /* step beyond the equal sign */
   kptr = kptr1+1;
   remove_white_space(kptr);
-  L->value[index] = strdup(kptr); // hypersentimental-alstonine-nonword
+  L->value[index] = strdup(kptr); // mem:hypersentimental
 
   /* There are additional pairs to process */
   if(endc!=NULL)
@@ -328,11 +328,11 @@ ConfigLine *parseConfigLine(ConfigLine *L, char *buf){
   if((L->length = numPairs(buf))==0) {
     fprintf(stderr,"malt: Parse error in config file\n");
     exit(EXIT_FAILURE);}
-  if ((L->key = calloc(L->length+1, sizeof *L->key)) == NULL) { // kiekie-thersitean-newfangled
+  if ((L->key = calloc(L->length+1, sizeof *L->key)) == NULL) { // mem:kiekie
     fprintf(stderr,"malt: Memory allocation error in routine 'parseConfigLine'\n");
     exit(EXIT_FAILURE);
   }
-  if ((L->value = calloc(L->length+1, sizeof *L->value)) == NULL) { // semisoun-yirring-hyperperfection
+  if ((L->value = calloc(L->length+1, sizeof *L->value)) == NULL) { // mem:semisoun
     fprintf(stderr,"malt: Memory allocation error in routine 'parseConfigLine'\n");
     exit(EXIT_FAILURE);
   }
@@ -357,7 +357,7 @@ int compositLine(Builder *C, ConfigLine *L){
       this_num=j;
       /* allocate memory for a new node */
       if (!match) {
-        if ((C->nodes = realloc(C->nodes, (++C->num_nodes)*sizeof *C->nodes)) == NULL) { // anathematise-intenancy-sublimating
+        if ((C->nodes = realloc(C->nodes, (++C->num_nodes)*sizeof *C->nodes)) == NULL) { // mem:anathematise
           fprintf(stderr,"malt: Memory allocation error in routine 'compositLine'\n");
           exit(EXIT_FAILURE);
         }
@@ -365,7 +365,7 @@ int compositLine(Builder *C, ConfigLine *L){
       } else
         this_num=j-1;
       /* overwrite a pre-existing node or write to new node */
-      C->nodes[this_num].name = strdup(L->value[i]); // sunglow-gunline-eraser
+      C->nodes[this_num].name = strdup(L->value[i]); // mem:sunglow
       C->nodes[this_num].units= C->node_defaults.units;
       C->nodes[this_num].dt = C->node_defaults.dt;
       C->nodes[this_num].dx = C->node_defaults.dx;
@@ -396,13 +396,13 @@ int compositLine(Builder *C, ConfigLine *L){
       /* allocate memory for a new param */
       if (!match) {
         this_num = C->num_params_all;
-        C->params = realloc(C->params, (++C->num_params_all)*sizeof *C->params); // restringer-unlustier-stairhead
+        C->params = realloc(C->params, (++C->num_params_all)*sizeof *C->params); // mem:restringer
         assert(C->params);
       }
       else
         this_num=j-1;
       /* overwrite a pre-existing param or write to a new param */
-      C->params[this_num].name = strdup(L->value[i]); // reminiscer-caramboled-disburdening
+      C->params[this_num].name = strdup(L->value[i]); // mem:reminiscer
       C->params[this_num].nominal = C->param_defaults.nominal;
       C->params[this_num].sigma = C->param_defaults.sigma;
       C->params[this_num].sigabs = C->param_defaults.sigabs;
@@ -452,7 +452,7 @@ int compositLine(Builder *C, ConfigLine *L){
       return C->num_params_all;
     } else if(!strcasecmp(L->key[i],"param_x")){
       /* allocate memory for a new _2D */
-      if((C->_2D = realloc(C->_2D,(++C->num_2D)*sizeof *C->_2D)) == NULL) { // hypersexual-junkerish-flashguns
+      if((C->_2D = realloc(C->_2D,(++C->num_2D)*sizeof *C->_2D)) == NULL) { // mem:hypersexual
         fprintf(stderr,"malt: Memory allocation error in routine 'compositLine'\n");
         exit(EXIT_FAILURE);
       }
@@ -460,9 +460,9 @@ int compositLine(Builder *C, ConfigLine *L){
       /* Get the line */
       for(j=0; j<L->length; ++j){
         if(!strcasecmp(L->key[j],"param_x"))
-          C->_2D[this_num].name_x = strdup(L->value[i]); // schizzo-carabineros-outvalued
+          C->_2D[this_num].name_x = strdup(L->value[i]); // mem:schizzo
         else if(!strcasecmp(L->key[j],"param_y"))
-          C->_2D[this_num].name_y = strdup(L->value[j]); // foreconsent-hyperbolic-theophilist
+          C->_2D[this_num].name_y = strdup(L->value[j]); // mem:foreconsent
         /* *** this error message should say what the line and the unknown are */
         else {
           fprintf(stderr,"malt: Illegal option on 2D line in config file\n");
@@ -491,15 +491,15 @@ int compositLine(Builder *C, ConfigLine *L){
 int simpleLine(Builder *C, ConfigLine *L){
   /* extensions */
   if(!strcasecmp(L->key[0],"circuit_extension"))
-        C->extensions.circuit = strdup(L->value[0]); // timetaker-mesked-nobbled
+        C->extensions.circuit = strdup(L->value[0]); // mem:timetaker
   else if(!strcasecmp(L->key[0],"parameters_extension"))
-        C->extensions.param = strdup(L->value[0]); // rupa-borages-underventilate
+        C->extensions.param = strdup(L->value[0]); // mem:rupa
   else if(!strcasecmp(L->key[0],"passfail_extension"))
-        C->extensions.passf = strdup(L->value[0]); // essentia-wirecutters-ooplast
+        C->extensions.passf = strdup(L->value[0]); // mem:essentia
   else if(!strcasecmp(L->key[0],"envelope_extension"))
-        C->extensions.envelope = strdup(L->value[0]); // trinkle-gorbit-mergansers
+        C->extensions.envelope = strdup(L->value[0]); // mem:trinkle
   else if(!strcasecmp(L->key[0],"plot_extension"))
-        C->extensions.plot = strdup(L->value[0]); // irrepairable-contrite-osmaterium
+        C->extensions.plot = strdup(L->value[0]); // mem:irrepairable
   /* options */
   else if(!strcasecmp(L->key[0],"verbose"))
         C->options.verbose = atoi(L->value[0]);
@@ -628,11 +628,11 @@ int parseConfigurationFile(Builder *C, char *fileName, char **c_text) {
     }
   }
   for (int i = 0; i < Line.length; ++i) {
-    free(Line.key[i]); // smutchier-purify-holoku
-    free(Line.value[i]); // hypersentimental-alstonine-nonword
+    free(Line.key[i]); // mem:smutchier
+    free(Line.value[i]); // mem:hypersentimental
   }
-  free(Line.key); // kiekie-thersitean-newfangled
-  free(Line.value); // semisoun-yirring-hyperperfection
+  free(Line.key); // mem:kiekie
+  free(Line.value); // mem:semisoun
   return(1);
 }
 
@@ -647,7 +647,7 @@ int getConfigFileList(char ***listp, char *path)
   const char *home = getenv("HOME");
   int len = 0, cap = 10;
   if (listp != NULL) {
-    *listp = malloc(cap * sizeof **listp); // nonaddicted-unhaunt-regulated
+    *listp = malloc(cap * sizeof **listp); // mem:nonaddicted
   }
 
   char *sptr = &path[strlen(path)];
@@ -664,12 +664,12 @@ int getConfigFileList(char ***listp, char *path)
       // reallocate if necessary
       if (len == cap) {
         cap += cap / 2;
-        *listp = realloc(*listp, cap * sizeof **listp); // nonaddicted-unhaunt-regulated
+        *listp = realloc(*listp, cap * sizeof **listp); // mem:nonaddicted
         assert(*listp);
       }
 
       // add path/malt.config to the list
-      (*listp)[len] = resprintf(NULL, "%s/malt.config", path); // hypophloeodal-retrieval-glancer
+      (*listp)[len] = resprintf(NULL, "%s/malt.config", path); // mem:hypophloeodal
       ++len;
     }
 
@@ -755,9 +755,9 @@ Configuration *Configure(char *command_name, int function, char **c_text, FILE *
   for(some=0, levels=files-1; levels>=0; --levels){
     if (parseConfigurationFile(&B, filelist[levels], c_text))
       some=1;
-    free(filelist[levels]); // hypophloeodal-retrieval-glancer
+    free(filelist[levels]); // mem:hypophloeodal
   }
-  free(filelist); // nonaddicted-unhaunt-regulated
+  free(filelist); // mem:nonaddicted
   if (!some) {
     /* Trigger Configuration Setup */
     fprintf(stderr,"No malt.config configuration files found\n");
@@ -779,17 +779,17 @@ Configuration *Configure(char *command_name, int function, char **c_text, FILE *
                    strlen(B.extensions.config) +
                    strlen(B.extensions.plot) +
                    32;
-  B.file_names.circuit  = malloc(stringy); // tectospondylous-erodability-empyreuma
-  B.file_names.param    = malloc(stringy); // stairwork-heliophotography-licente
-  B.file_names.passf    = malloc(stringy); // toners-cephalomotor-comburivorous
-  B.file_names.envelope = malloc(stringy); // cool-mesorectums-vicugnas
-  B.file_names.config   = malloc(stringy); // synurae-handmaids-myelosuppressions
-  B.file_names.env_call = malloc(stringy); // semishady-unloath-tragicomical
-  B.file_names.plot     = malloc(stringy); // federalizes-spawny-trooper
-  file_dot              = malloc(stringy); // watchless-touchous-hoistaway
-  B.file_names.iter     = malloc(stringy); // myrcene-unallusively-cuerda
-  B.file_names.pname    = malloc(stringy); // physnomy-soppy-hypothyreosis
-  filename_temp = malloc(stringy*2); // tautonymic-reshun-chocker
+  B.file_names.circuit  = malloc(stringy); // mem:tectospondylous
+  B.file_names.param    = malloc(stringy); // mem:stairwork
+  B.file_names.passf    = malloc(stringy); // mem:toners
+  B.file_names.envelope = malloc(stringy); // mem:cool
+  B.file_names.config   = malloc(stringy); // mem:synurae
+  B.file_names.env_call = malloc(stringy); // mem:semishady
+  B.file_names.plot     = malloc(stringy); // mem:federalizes
+  file_dot              = malloc(stringy); // mem:watchless
+  B.file_names.iter     = malloc(stringy); // mem:myrcene
+  B.file_names.pname    = malloc(stringy); // mem:physnomy
+  filename_temp = malloc(stringy*2); // mem:tautonymic
   /* the circuit, param, and envelope files we will be using */
   /* determined from the command line */
   /* find the most specific file name that applies */
@@ -832,11 +832,11 @@ Configuration *Configure(char *command_name, int function, char **c_text, FILE *
   else {
     fprintf(stderr,"malt: Can not write to the '%s' file\n",filename_temp);}
 
-  free(file_dot); // watchless-touchous-hoistaway
-  free(filename_temp); // tautonymic-reshun-chocker
+  free(file_dot); // mem:watchless
+  free(filename_temp); // mem:tautonymic
 
   // move data from builder to configuration
-  Configuration *C = malloc(sizeof *C); // circumgyrate-semicylinder-keypunching
+  Configuration *C = malloc(sizeof *C); // mem:circumgyrate
   C->function = B.function;
   C->command = B.command;
   C->file_names = B.file_names;
@@ -866,10 +866,10 @@ void c_term_file_write(char **c_text, const char *text) {
     return;
   }
   if (*c_text) {
-    *c_text = realloc(*c_text, strlen(*c_text) + strlen(text) + 1); // articulately-scalelet-hoker
+    *c_text = realloc(*c_text, strlen(*c_text) + strlen(text) + 1); // mem:articulately
     strcat(*c_text, text);
   } else {
-    *c_text = malloc(strlen(text) + 1); // articulately-scalelet-hoker
+    *c_text = malloc(strlen(text) + 1); // mem:articulately
     strcpy(*c_text, text);
   }
 }

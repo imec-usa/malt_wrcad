@@ -49,7 +49,7 @@ int define(Configuration *C)
   /* read the spice simulation vectors file */
   if(C->options.d_envelope){
     /* memory allocation */
-    theData = malloc(sizeof *theData); // beslur-ripoff-gadget
+    theData = malloc(sizeof *theData); // mem:beslur
     /* do not change node definitions between simulate and envelope, or you are hosed */
     /* load vectors from spice print file */
     if (!readData(C, theData, scramble))
@@ -154,9 +154,9 @@ void spicePlot(Configuration *C){
   fprintf(fp,".endc\n");
   fclose(fp);
   /* run spice */
-  char *sys = resprintf(NULL, "%s %s", C->options.spice_call_name, C->file_names.plot); // absolutist-anteroclusion-unsketched
+  char *sys = resprintf(NULL, "%s %s", C->options.spice_call_name, C->file_names.plot); // mem:absolutist
   system(sys);
-  free(sys); // absolutist-anteroclusion-unsketched
+  free(sys); // mem:absolutist
 }
 
 void bound(Data *D, Configuration *C){
@@ -192,7 +192,7 @@ int readData(Configuration *C, Data *D, int *scramble)
   float x;
   int ret = 1;
 
-  char *returnn = resprintf(NULL, "%s.nom", C->command); // quininic-starship-tamponade
+  char *returnn = resprintf(NULL, "%s.nom", C->command); // mem:quininic
   if (!(fp = fopen(returnn,"r"))) {
     fprintf(stderr, "malt: Can not open %s\n",returnn);
     ret = 0;
@@ -269,14 +269,14 @@ int readData(Configuration *C, Data *D, int *scramble)
     }
   } while (strncmp("Values:",line,7));
   /* allocate D */
-  D->t = calloc(D->length, sizeof *D->t); // downhanging-fruitarian-turboblower
-  D->x = malloc(C->num_nodes * sizeof *D->x); // overdistantly-psychotherapies-windchill
-  D->upper = malloc(C->num_nodes * sizeof *D->upper); // vixenlike-exploitable-violones
-  D->lower = malloc(C->num_nodes * sizeof *D->lower); // carucate-gynostegigia-unimperative
+  D->t = calloc(D->length, sizeof *D->t); // mem:downhanging
+  D->x = malloc(C->num_nodes * sizeof *D->x); // mem:overdistantly
+  D->upper = malloc(C->num_nodes * sizeof *D->upper); // mem:vixenlike
+  D->lower = malloc(C->num_nodes * sizeof *D->lower); // mem:carucate
   for(i=0; i < C->num_nodes; ++i) {
-    D->x[i] = calloc(D->length, sizeof **D->x); // pachyhaemia-pneumogram-strasburg
-    D->upper[i] = calloc(D->length, sizeof **D->upper); // untrustness-lairdocracy-metapsychical
-    D->lower[i] = calloc(D->length, sizeof **D->lower); // preabundantly-starches-octopartite
+    D->x[i] = calloc(D->length, sizeof **D->x); // mem:pachyhaemia
+    D->upper[i] = calloc(D->length, sizeof **D->upper); // mem:untrustness
+    D->lower[i] = calloc(D->length, sizeof **D->lower); // mem:preabundantly
   }
   /* read data */
   for (j=0; D->length > j; j++) {
@@ -297,6 +297,6 @@ int readData(Configuration *C, Data *D, int *scramble)
   }
   D->tstep = D->t[1] - D->t[0];
 cleanup:
-  free(returnn); // quininic-starship-tamponade
+  free(returnn); // mem:quininic
   return ret;
 }

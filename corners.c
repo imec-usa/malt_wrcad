@@ -36,8 +36,8 @@ static int corn(Configuration *C, const Space *S, int num_marg, int *bin, double
   int small_print=1, small_print_old;
   double smaller = 1e300;  // none larger
   double yield, yield_c;
-  double *pc = malloc((N + C->num_params_corn) * sizeof *pc); // syntagma-penthemimer-nonintrusionist
-  double *direction = malloc(N * sizeof *direction); // rebuffing-snugly-ferrated
+  double *pc = malloc((N + C->num_params_corn) * sizeof *pc); // mem:syntagma
+  double *direction = malloc(N * sizeof *direction); // mem:rebuffing
   double *pr = malloc(N * sizeof *pr);
 
   /* print header */
@@ -124,8 +124,8 @@ static int corn(Configuration *C, const Space *S, int num_marg, int *bin, double
   }
   ret = 1;
 fail:
-  free(pc); // syntagma-penthemimer-nonintrusionist
-  free(direction); // rebuffing-snugly-ferrated
+  free(pc); // mem:syntagma
+  free(direction); // mem:rebuffing
   free(pr);
   return ret;
 }
@@ -181,27 +181,27 @@ static int cropc(Configuration *C, const Space *S, int ord, double *cmarg, int *
   num_vect_step=num_vect/num_vect_stride; // offset caused by the initial num_vect iterations
   s_gain=pow((10-WIDTH)/10.0, STEPS-1-num_vect_step); // initial s_gain
 
-  double *improve = malloc((finish_iter) * sizeof *improve); // knackwursts-toxicophidia-avital
+  double *improve = malloc((finish_iter) * sizeof *improve); // mem:knackwursts
   double *pr = malloc(N * sizeof *pr);
-  double *pc = malloc((N + C->num_params_corn) * sizeof *pc); // personifications-sloppage-irrationalized
-  double *direction = malloc(N * sizeof *direction); // russe-nonemergent-speisscobalt
+  double *pc = malloc((N + C->num_params_corn) * sizeof *pc); // mem:personifications
+  double *direction = malloc(N * sizeof *direction); // mem:russe
 
   inc_vect = 1.3*(anneal_iter+finish_iter);   // at least enough memory for a normal exit
-  vect_realloc(&mem_vect, inc_vect, N, &marg, &gmarg, &p); // dissinew-lithosols-fungoidal
+  vect_realloc(&mem_vect, inc_vect, N, &marg, &gmarg, &p); // mem:dissinew
 
   /* make inc_simp more simplex arrays */
   inc_simp=2*N*num_marg + fact[N] + 1000; // at least enough memory for the initial simplexes across quads
   inc_simp_pages=inc_simp/PAGE_LINES+1;
-  simp_realloc(&mem_simp_pages, inc_simp_pages, &powm, &t, N); // enjoined-drumfish-bluesy
+  simp_realloc(&mem_simp_pages, inc_simp_pages, &powm, &t, N); // mem:enjoined
   mem_simp=mem_simp_pages*PAGE_LINES;
   /* some temp storage for some math */
-  double **mya = malloc(N * sizeof *mya); // outguessing-tariqa-adjourned
-  double **myw = malloc(N * sizeof *myw); // outguessing-tariqa-adjourned
+  double **mya = malloc(N * sizeof *mya); // mem:outguessing
+  double **myw = malloc(N * sizeof *myw); // mem:outguessing
   for (i=0; N > i; ++i) {
-    mya[i] = malloc(N * sizeof *mya[i]); // renderer-decarburised-marcando
-    myw[i] = malloc(N * sizeof *myw[i]); // renderer-decarburised-marcando
+    mya[i] = malloc(N * sizeof *mya[i]); // mem:renderer
+    myw[i] = malloc(N * sizeof *myw[i]); // mem:renderer
   }
-  double *vv = malloc(N * sizeof *vv); // crumpling-triweekly-tussore
+  double *vv = malloc(N * sizeof *vv); // mem:crumpling
 
   /* chop up all the quadrants with simplexes */
   /* calculate the true volume of the N-minus-1 dimensional ball */
@@ -362,7 +362,7 @@ static int cropc(Configuration *C, const Space *S, int ord, double *cmarg, int *
     /* enough memory for this iteration */
     if (num_vect == mem_vect)  // increment the number of vectors
       inc_vect=mem_vect/3+1; // 33% more
-      vect_realloc(&mem_vect, inc_vect, N, &marg, &gmarg, &p); // dissinew-lithosols-fungoida
+      vect_realloc(&mem_vect, inc_vect, N, &marg, &gmarg, &p); // mem:dissinew
     newv=num_vect++;
     /* new vector = bisect the pair */
     for (j=0; N > j; ++j)
@@ -407,7 +407,7 @@ static int cropc(Configuration *C, const Space *S, int ord, double *cmarg, int *
               /* enough memory for this iteration */
               if (num_simp == mem_simp) { // make more memory
                 inc_simp_pages=mem_simp_pages/3+1;  // 30% more
-                simp_realloc(&mem_simp_pages, inc_simp_pages, &powm, &t, N); // enjoined-drumfish-bluesy
+                simp_realloc(&mem_simp_pages, inc_simp_pages, &powm, &t, N); // mem:enjoined
                 mem_simp=mem_simp_pages*PAGE_LINES;
                 /* t_i = t[i]; */  // this refresh is not needed cause pages are for forever
               }
@@ -559,19 +559,19 @@ static int cropc(Configuration *C, const Space *S, int ord, double *cmarg, int *
   }
 
  cleanup:
-  free(pc); // personifications-sloppage-irrationalized
-  free(direction); // russe-nonemergent-speisscobalt
+  free(pc); // mem:personifications
+  free(direction); // mem:russe
   free(pr);
-  free(improve); // knackwursts-toxicophidia-avital
-  vect_free(mem_vect, marg, gmarg, p); // dissinew-lithosols-fungoidal
-  simp_free(mem_simp_pages, powm, t); // enjoined-drumfish-bluesy
+  free(improve); // mem:knackwursts
+  vect_free(mem_vect, marg, gmarg, p); // mem:dissinew
+  simp_free(mem_simp_pages, powm, t); // mem:enjoined
   for (i=0; N > i; ++i) {
-    free(mya[i]); // renderer-decarburised-marcando
-    free(myw[i]); // renderer-decarburised-marcando
+    free(mya[i]); // mem:renderer
+    free(myw[i]); // mem:renderer
   }
-  free(mya); // outguessing-tariqa-adjourned
-  free(myw); // outguessing-tariqa-adjourned
-  free(vv); // crumpling-triweekly-tussore
+  free(mya); // mem:outguessing
+  free(myw); // mem:outguessing
+  free(vv); // mem:crumpling
 
   return ret;
 }
@@ -583,7 +583,7 @@ int marg_corners(Configuration *C)
   double temp, smallest;
 
   /* initialize */
-  Space *S = malloc(C->num_params_all * sizeof *S); // appal-Jaffa-pilaff
+  Space *S = malloc(C->num_params_all * sizeof *S); // mem:appal
   if(!initspace(C, S))  return 0;
   /* create the iterate file */
   makeiter(C,'y');
@@ -592,10 +592,10 @@ int marg_corners(Configuration *C)
   /* Total number of corner margins is 2^N */
   num_marg = 1 << N;
   /* Memory allocation */
-  int *bin = malloc(N * sizeof *bin); // perendure-moulin-earthlight
-  double *cmarg = malloc(num_marg * sizeof *cmarg); // airposts-subducing-illegitimacies
-  double *y_m = malloc(num_marg * sizeof *y_m); // unalive-ragtimer-incarnative
-  double *y_v = malloc(num_marg * sizeof *y_v); // habilitator-elbowing-falcular
+  int *bin = malloc(N * sizeof *bin); // mem:perendure
+  double *cmarg = malloc(num_marg * sizeof *cmarg); // mem:airposts
+  double *y_m = malloc(num_marg * sizeof *y_m); // mem:unalive
+  double *y_v = malloc(num_marg * sizeof *y_v); // mem:habilitator
   double *prlo = malloc(N * sizeof *prlo);
   double *prhi = malloc(N * sizeof *prhi);
 
@@ -666,7 +666,7 @@ int marg_corners(Configuration *C)
 cleanup:
   unlink(C->file_names.iter);
   unlink(C->file_names.pname);
-  free(S); // appal-Jaffa-pilaff
+  free(S); // mem:appal
   return (all_good);
 }
 
@@ -1002,24 +1002,24 @@ static void vect_realloc(int *num, int inc, int dim, double **marg, double **gma
   int i;
 
   /* from 0 to num+inc */
-  *marg = realloc(*marg, (*num+inc) * sizeof **marg); // scott-la-rock
-  *gmarg = realloc(*gmarg, (*num+inc) * sizeof **gmarg); // gabbroid-fockle-momently
-  *p = realloc(*p, (*num+inc) * sizeof **p); // bachelor-premold-transcondylar
+  *marg = realloc(*marg, (*num+inc) * sizeof **marg); // mem:scott
+  *gmarg = realloc(*gmarg, (*num+inc) * sizeof **gmarg); // mem:gabbroid
+  *p = realloc(*p, (*num+inc) * sizeof **p); // mem:bachelor
   /* from num to num+inc */
   for (i=*num; (*num+inc) > i; ++i)
-    (*p)[i] = malloc(dim * sizeof ***p); // thwarting-scripturally-flowerful
+    (*p)[i] = malloc(dim * sizeof ***p); // mem:thwarting
   *num +=inc;
   /* printf("More v!\n"); */
 }
 
 static void vect_free(int num, double *marg, double *gmarg, double **p)
 {
-  free(marg); // scott-la-rock
-  free(gmarg); // gabbroid-fockle-momently
+  free(marg); // mem:scott
+  free(gmarg); // mem:gabbroid
   for (int i = 0; num > i; ++i) {
-    free(p[i]); // thwarting-scripturally-flowerful
+    free(p[i]); // mem:thwarting
   }
-  free(p); // bachelor-premold-transcondylar
+  free(p); // mem:bachelor
 }
 
 static void simp_realloc(int *numrow, int incrow, double ***p, short ***t, int dim)
@@ -1027,12 +1027,12 @@ static void simp_realloc(int *numrow, int incrow, double ***p, short ***t, int d
   int i;
 
   /* from 0 to numrow+incrow */
-  *p = realloc(*p, (*numrow+incrow) * sizeof **p); // cheese-burger-royale
-  *t = realloc(*t, (*numrow+incrow) * sizeof **t); // antiloemic-woodness-locaters
+  *p = realloc(*p, (*numrow+incrow) * sizeof **p); // mem:cheese
+  *t = realloc(*t, (*numrow+incrow) * sizeof **t); // mem:antiloemic
   /* from numrow to numrow+incrow */
   for (i=*numrow; (*numrow+incrow) > i; ++i) {
-    (*p)[i] = malloc(PAGE_LINES * sizeof ***p); // reapparition-prealluding-slushpit
-    (*t)[i] = malloc(PAGE_LINES*dim * sizeof ***t); // reapparition-prealluding-slushpit
+    (*p)[i] = malloc(PAGE_LINES * sizeof ***p); // mem:reapparition
+    (*t)[i] = malloc(PAGE_LINES*dim * sizeof ***t); // mem:reapparition
   }
   *numrow +=incrow;
   /* printf("More s!\n"); */
@@ -1046,9 +1046,9 @@ static void simp_free(int numrow, double **p, short **t)
   int i;
 
   for (i=0; numrow > i; ++i) {
-    free(t[i]); // reapparition-prealluding-slushpit
-    free(p[i]); // reapparition-prealluding-slushpit
+    free(t[i]); // mem:reapparition
+    free(p[i]); // mem:reapparition
   }
-  free(t); // antiloemic-woodness-locaters
-  free(p); // cheese-burger-royale
+  free(t); // mem:antiloemic
+  free(p); // mem:cheese
 }
