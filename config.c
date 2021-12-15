@@ -9,6 +9,7 @@
 /* need a units field for dt and dx */
 #include "config.h"
 #include "malt.h"
+#include "toml.h"
 #include <assert.h>
 #include <ctype.h>
 #include <stdlib.h>

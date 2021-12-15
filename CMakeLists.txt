@@ -27,6 +27,7 @@ add_executable(malt
                numerical.c
                optimize.c
                space.c
-               stat_math.c)
+               stat_math.c
+               toml.c)
 
 target_link_libraries(malt m pthread)
