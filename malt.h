@@ -3,8 +3,13 @@
 #ifndef MALT
 #define MALT
 
-// typedef struct config Configuration;
 #include "config.h"
+
+typedef struct args {
+  int function;
+  char *circuit_name;
+  int verbosity;
+} Args;
 
 void strchrcat(char *, int);
 char *resprintf(char **restrict strp, const char *fmt, ...);

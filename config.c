@@ -1,27 +1,101 @@
 // vi: ts=2 sts=2 sw=2 et tw=100
 /* parse configuraton files */
 
-/* *** need to have a flag for each composit line field */
-/* which says if the field is defined or not */
-/* if not, do not print it in dumpConfiguration */
-/* source final configuration file at the very end */
-/* which trumps everything previous */
-/* need a units field for dt and dx */
+// TODO
+// - Keep track of initialized status of fields in Builder, don't print the uninitialized ones
+// (print examples instead)
+// - implement units field for dt and dx
+
 #include "config.h"
 #include "malt.h"
 #include "toml.h"
 #include <assert.h>
 #include <ctype.h>
+#include <stdarg.h>
+#include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h> /* for strcasecmp */
 #include <unistd.h>
 
-typedef struct config_line {
-  char **key;
-  char **value;
-  int length;
-} ConfigLine;
+static const Param PARAM_DEFAULT = {
+    .name = NULL,
+    .nominal = 1,
+    .sigma = 0.0,
+    .sigabs = 0.0,
+    .min = 0.5,
+    .max = 2.0,
+    .top_min = 0,
+    .top_max = 0,
+    .staticc = 0,
+    .isnommin = 0,
+    .isnommax = 0,
+    .include = 1,
+    .logs = 1,
+    .corners = 0,
+};
+
+/* Print formatted output (with an (info) prefix) to stderr and also to the given log file (if
+ * non-null). */
+static void info(FILE *log, const char *fmt, ...)
+{
+  va_list args;
+  // print to terminal
+  fprintf(stderr, "malt: (info) ");
+  va_start(args, fmt);
+  vfprintf(stderr, fmt, args);
+  va_end(args);
+
+  // print to log file
+  fprintf(log, "malt: (info) ");
+  va_start(args, fmt);
+  vfprintf(log, fmt, args);
+  va_end(args);
+
+  // flush logfile
+  fflush(log);
+}
+
+/* Like `info`, but prints a (warning) prefix. */
+static void warn(FILE *log, const char *fmt, ...)
+{
+  va_list args;
+  // print to terminal
+  fprintf(stderr, "malt: (warning) ");
+  va_start(args, fmt);
+  vfprintf(stderr, fmt, args);
+  va_end(args);
+
+  // print to log file
+  fprintf(log, "malt: (warning) ");
+  va_start(args, fmt);
+  vfprintf(log, fmt, args);
+  va_end(args);
+
+  // flush logfile
+  fflush(log);
+}
+
+/* Like `info`, but prints an (error) prefix, and terminates the program with EXIT_FAILURE. */
+__attribute__((noreturn)) static void error(FILE *log, const char *fmt, ...)
+{
+  va_list args;
+  // print to terminal
+  fprintf(stderr, "malt: (error) ");
+  va_start(args, fmt);
+  vfprintf(stderr, fmt, args);
+  va_end(args);
+
+  // print to log file
+  fprintf(log, "malt: (error) ");
+  va_start(args, fmt);
+  vfprintf(log, fmt, args);
+  va_end(args);
+
+  // close logfile
+  fclose(log);
+  exit(EXIT_FAILURE);
+}
 
 typedef struct builder {
   int function;
@@ -47,8 +121,6 @@ typedef struct builder {
   int num_2D;
   _2D *_2D;
 } Builder;
-
-void c_term_file_write(char **c_text, const char *text);
 
 static void builder_debug(const Builder *B, FILE *fp)
 {
@@ -206,7 +278,7 @@ void builder_init(Builder *C)
 
   C->log = NULL;
   /* initialize everything to internal defaults */
-  /* iternal file names */
+  /* internal file names */
   C->file_names.circuit = NULL;
   C->file_names.param = NULL;
   C->file_names.passf = NULL;
@@ -216,27 +288,13 @@ void builder_init(Builder *C)
   C->file_names.plot = NULL;
   C->file_names.iter = NULL;
   C->file_names.pname = NULL;
-  /* in config files, defaults must be defined before nodes and params which use defaults */
   /* node defaults */
   C->node_defaults.name = NULL;
   C->node_defaults.units = 'V';
   C->node_defaults.dt = 100e-12;
   C->node_defaults.dx = 1;
   /* parameter defaults */
-  C->param_defaults.name = NULL;
-  C->param_defaults.nominal = 1;
-  C->param_defaults.sigma = 0.0;
-  C->param_defaults.sigabs = 0.0;
-  C->param_defaults.min = 0.5;
-  C->param_defaults.max = 2;
-  C->param_defaults.top_min = 0;
-  C->param_defaults.top_max = 0;
-  C->param_defaults.staticc = 0;
-  C->param_defaults.isnommin = 0;
-  C->param_defaults.isnommax = 0;
-  C->param_defaults.include = 1;
-  C->param_defaults.logs = 1;
-  C->param_defaults.corners = 0;
+  C->param_defaults = PARAM_DEFAULT;
   /* nodes, params, and 2D */
   C->nodes = NULL;
   C->params = NULL;
@@ -249,7 +307,7 @@ void builder_init(Builder *C)
   C->extensions.param = ".param";
   C->extensions.passf = ".passf";
   C->extensions.envelope = ".envelope";
-  C->extensions.config = ".config";
+  C->extensions.config = ".toml";
   C->extensions.plot = ".plot";
   /* pretty weak */
   C->extensions.which_trace = malloc(LINE_LENGTH);  // mem:intratubal
@@ -279,426 +337,346 @@ void builder_init(Builder *C)
   C->options.o_max_mem_k = 4194304;
 }
 
-/* Removes leading and trailing whitespace from a string. */
-void remove_white_space(char *token)
+/* Reads a boolean from the table `values`, allowing either a TOML boolean or
+ * integer value.
+ * Returns 1 and stores the result in *dest if present; returns 0 otherwise. */
+// TODO: replace int -> bool
+static int read_a_bool(int *dest, toml_table_t *values, const char *key)
 {
-  char *begin = token;
-  while (*begin && isspace(*begin)) {
-    ++begin;
+  toml_datum_t value = toml_bool_in(values, key);
+  if (value.ok) {
+    *dest = value.u.b;
+  } else if ((value = toml_int_in(values, key)).ok) {
+    *dest = value.u.i;
   }
-  size_t len = 0;
-  while (begin[len]) {
-    ++len;
-  }
-  while (len > 0 && isspace(begin[len - 1])) {
-    --len;
-  }
-  memmove(token, begin, len);
-  token[len] = '\0';
+  return *dest;
 }
 
-int numDelims(char *str, char c)
+/* Reads an integer from the table `values`.
+ * Returns 1 and stores the result in *dest if present; returns 0 otherwise. */
+static int read_an_int(int *dest, toml_table_t *values, const char *key)
 {
-  char *cptr;
-  if (*str == '\0') {
-    fprintf(stderr, "malt: Parse error in config file\n");
-    exit(EXIT_FAILURE);
+  toml_datum_t value = toml_int_in(values, key);
+  if (value.ok) {
+    *dest = value.u.i;
+    return 1;
+  } else {
+    return 0;
   }
-  if ((cptr = strchr(str, c)) == NULL) {
-    return (0);
-  } else
-    return (1 + numDelims(cptr + 1, c));
 }
 
-int numPairs(char *line)
+/* Read a `double` from the `values` table.
+ * Returns 1 and stores the result in *dest when successful, 0 otherwise. */
+static int read_a_double(double *dest, toml_table_t *values, const char *key)
 {
-  int equal_signs, commas;
-  equal_signs = numDelims(line, '=');
-  commas = numDelims(line, ',');
-  if (equal_signs != (commas + 1)) {
-    fprintf(stderr, "malt: Parse error in config file\n%s\n", line);
-    exit(EXIT_FAILURE);
+  toml_datum_t value = toml_double_in(values, key);
+  if (value.ok) {
+    *dest = value.u.d;
+    return 1;
+  } else {
+    return 0;
   }
-  return (equal_signs);
 }
 
-int interpretLine(ConfigLine *L, char *buf, int index)
+/* Reads a string (char *) from the table `values`.
+ * Returns 1 and stores the result in *dest if successful, 0 otherwise.
+ * `*dest` needs to be freed. */
+static int read_a_string(const char **dest, toml_table_t *values, const char *key)
 {
-  char *endc, *kptr, *kptr1;
-
-  /*Is this the last key/value entry?*/
-  if ((endc = (char *)strchr(buf, ',')) != NULL)
-    *endc = '\0';
-
-  /* chop at first equal sign */
-  kptr = buf;
-  kptr1 = (char *)strchr(kptr, '=');
-  *kptr1 = '\0';
-  remove_white_space(kptr);
-  L->key[index] = strdup(kptr);  // mem:smutchier
-
-  /* step beyond the equal sign */
-  kptr = kptr1 + 1;
-  remove_white_space(kptr);
-  L->value[index] = strdup(kptr);  // mem:hypersentimental
-
-  /* There are additional pairs to process */
-  if (endc != NULL)
-    return (1 + interpretLine(L, endc + 1, index + 1));
-  else /* There are NOT additional pairs to process */
-    return (1);
+  toml_datum_t ext = toml_string_in(values, key);  // mem:timetaker
+  if (ext.ok) {
+    *dest = ext.u.s;
+    return 1;
+  } else {
+    return 0;
+  }
 }
 
-ConfigLine *parseConfigLine(ConfigLine *L, char *buf)
+/* Parse the [envelope] section of this file.
+ * Returns 0 if the section is not present or incomplete and 1 otherwise. */
+static int read_envelope(Builder *C, toml_table_t *t)
 {
-  if (buf == NULL || *buf == '\0') {
-    fprintf(stderr, "malt: Parse error in routine 'parseConfigLine'\n");
-    return (NULL);
+  // read [envelope] table (NOTE: must be done before nodes)
+  toml_table_t *envelope = toml_table_in(t, "envelope");
+  if (envelope) {
+    // TODO: parse units?
+    return read_a_double(&C->node_defaults.dx, envelope, "dx") &&
+           read_a_double(&C->node_defaults.dt, envelope, "dt");
+  } else {
+    return 0;
   }
-  if ((L->length = numPairs(buf)) == 0) {
-    fprintf(stderr, "malt: Parse error in config file\n");
-    exit(EXIT_FAILURE);
-  }
-  if ((L->key = calloc(L->length + 1, sizeof *L->key)) == NULL) {  // mem:kiekie
-    fprintf(stderr, "malt: Memory allocation error in routine 'parseConfigLine'\n");
-    exit(EXIT_FAILURE);
-  }
-  if ((L->value = calloc(L->length + 1, sizeof *L->value)) == NULL) {  // mem:semisoun
-    fprintf(stderr, "malt: Memory allocation error in routine 'parseConfigLine'\n");
-    exit(EXIT_FAILURE);
-  }
-  if (!(interpretLine(L, buf, 0))) {
-    fprintf(stderr, "malt: Parse error in config file\n");
-    exit(EXIT_FAILURE);
-  }
-  return (L);
 }
 
-/*Returns 0 on failure*/
-/*Returns number of keywords recognized on success*/
-int compositLine(Builder *C, ConfigLine *L)
+/* Read the `nodes` list from the top level of the toml file. Also reads [envelope] if nodes are
+ * present.
+ * Returns the number of nodes successfully read. */
+static int read_nodes(Builder *C, toml_table_t *t, FILE *log)
 {
-  int i, j, match, this_num;
-
-  /* node/param keyword need not be at beginning of line, but grab the first one you come to */
-  for (i = 0; i < L->length; ++i) {
-    if (!strcasecmp(L->key[i], "node")) {
-      /* does this node already exist? */
-      for (j = 0, match = 0; (j < C->num_nodes) && !match; ++j)
-        match = !strcmp(C->nodes[j].name, L->value[i]);
-      this_num = j;
-      /* allocate memory for a new node */
-      if (!match) {
-        if ((C->nodes = realloc(C->nodes, (++C->num_nodes) * sizeof *C->nodes)) ==
-            NULL) {  // mem:anathematise
-          fprintf(stderr, "malt: Memory allocation error in routine 'compositLine'\n");
-          exit(EXIT_FAILURE);
-        }
-        this_num = C->num_nodes - 1;
-      } else
-        this_num = j - 1;
-      /* overwrite a pre-existing node or write to new node */
-      C->nodes[this_num].name = strdup(L->value[i]);  // mem:sunglow
-      C->nodes[this_num].units = C->node_defaults.units;
-      C->nodes[this_num].dt = C->node_defaults.dt;
-      C->nodes[this_num].dx = C->node_defaults.dx;
-      /* Get the rest of the line */
-      for (j = 0; j < L->length; ++j) {
-        if (!strcasecmp(L->key[j], "node"))
-          ;
-        else if (!strcasecmp(L->key[j], "dt"))
-          C->nodes[this_num].dt = atof(L->value[j]);
-        else if (!strcasecmp(L->key[j], "dx"))
-          C->nodes[this_num].dx = atof(L->value[j]);
-        /* *** this error message should say what the line and the unknown are */
-        else {
-          fprintf(stderr, "malt: Illegal option on node line\n");
-          return 0;
+  int len_nodes = 0;
+  int has_envelope = read_envelope(C, t);
+  toml_array_t *nodes = toml_array_in(t, "nodes");
+  if (nodes) {
+    // nodes are present: [envelope] must be too, for defaults
+    if (!has_envelope) {
+      error(log, "Missing [envelope] in TOML file containing nodes list\n");
+    }
+    len_nodes = toml_array_nelem(nodes);
+    // overwrite nodes if already specified by earlier configurations
+    // FIXME: clobbering leaks memory for .name
+    C->nodes = realloc(C->nodes, len_nodes * sizeof *C->nodes);
+    if (C->num_nodes != 0) {
+      warn(log, "Overwriting previously configured node list\n");
+    }
+    C->num_nodes = len_nodes;
+    for (int n = 0; n < len_nodes; ++n) {
+      toml_datum_t node = toml_string_at(nodes, n);  // mem:sunglow
+      if (node.ok) {
+        // node is a string; we will use the provided envelope settings
+        // add this node to the configuration
+        C->nodes[n].name = node.u.s;
+        C->nodes[n].units = C->node_defaults.units;
+        C->nodes[n].dt = C->node_defaults.dt;
+        C->nodes[n].dx = C->node_defaults.dx;
+      } else {
+        toml_table_t *node = toml_table_at(nodes, n);
+        if (node) {
+          // TODO: permit nodes to have metadata, and check that dx, dt are nonzero
+          error(log, "Table not supported for node %zu (this is a bug in Malt)\n", n);
+        } else {
+          error(log, "Node %zu is neither a string nor a table\n", n);
         }
       }
-      /* check it */
-      if (C->nodes[this_num].dt == 0) {
-        fprintf(stderr, "malt: Value of dt is zero or default value is undefined\n");
-        return 0;
+    }
+  }
+  return len_nodes;
+}
+
+/* Read the [parameters] table from the TOML file, if present.
+ * Returns the number of parameters successfully read.  */
+static int read_parameters(Builder *C, toml_table_t *t, FILE *log)
+{
+  toml_table_t *parameters = toml_table_in(t, "parameters");
+  if (parameters) {
+    // loop over the table entries
+    int i;
+    for (i = 0;; ++i) {
+      const char *parameter = toml_key_in(parameters, i);
+      if (!parameter)
+        break;
+      toml_table_t *values = toml_table_in(parameters, parameter);
+      if (!values) {
+        error(log, "[parameters.%s] is not a table\n", parameter);
       }
-      if (C->nodes[this_num].dx == 0) {
-        fprintf(stderr, "malt: Value of dx is zero or default value is undefined\n");
-        return 0;
-      }
-      return C->num_nodes;
-    } else if (!strcasecmp(L->key[i], "param")) {
-      /* does this param already exist? */
-      for (j = 0, match = 0; (j < C->num_params_all) && !(match); ++j)
-        match = !strcmp(C->params[j].name, L->value[i]);
-      this_num = j;
-      /* allocate memory for a new param */
-      if (!match) {
-        this_num = C->num_params_all;
-        C->params =
-            realloc(C->params, (++C->num_params_all) * sizeof *C->params);  // mem:restringer
-        assert(C->params);
-      } else
-        this_num = j - 1;
-      /* overwrite a pre-existing param or write to a new param */
-      C->params[this_num].name = strdup(L->value[i]);  // mem:reminiscer
-      C->params[this_num].nominal = C->param_defaults.nominal;
-      C->params[this_num].sigma = C->param_defaults.sigma;
-      C->params[this_num].sigabs = C->param_defaults.sigabs;
-      C->params[this_num].min = C->param_defaults.min;
-      C->params[this_num].max = C->param_defaults.max;
-      C->params[this_num].top_min = C->param_defaults.top_min;
-      C->params[this_num].top_max = C->param_defaults.top_max;
-      C->params[this_num].staticc = C->param_defaults.staticc;
-      C->params[this_num].isnommin = C->param_defaults.isnommin;
-      C->params[this_num].isnommax = C->param_defaults.isnommax;
-      C->params[this_num].include = C->param_defaults.include;
-      C->params[this_num].logs = C->param_defaults.logs;
-      C->params[this_num].corners = C->param_defaults.corners;
-      /* Get the rest of the line */
-      for (j = 0; j < L->length; ++j) {
-        if (!strcasecmp(L->key[j], "param"))
-          ;
-        else if (!strcasecmp(L->key[j], "nominal"))
-          C->params[this_num].nominal = atof(L->value[j]);
-        else if (!strcasecmp(L->key[j], "sigma"))
-          C->params[this_num].sigma = atof(L->value[j]);
-        else if (!strcasecmp(L->key[j], "sig_abs"))
-          C->params[this_num].sigabs = atof(L->value[j]);
-        else if (!strcasecmp(L->key[j], "min")) {
-          C->params[this_num].min = atof(L->value[j]);
-          C->params[this_num].top_min = 1;
-        } else if (!strcasecmp(L->key[j], "max")) {
-          C->params[this_num].max = atof(L->value[j]);
-          C->params[this_num].top_max = 1;
-        } else if (!strcasecmp(L->key[j], "static"))
-          C->params[this_num].staticc = atoi(L->value[j]);
-        else if (!strcasecmp(L->key[j], "nom_min")) {
-          C->params[this_num].nom_min = atof(L->value[j]);
-          C->params[this_num].isnommin = 1;
-        } else if (!strcasecmp(L->key[j], "nom_max")) {
-          C->params[this_num].nom_max = atof(L->value[j]);
-          C->params[this_num].isnommax = 1;
-        } else if (!strcasecmp(L->key[j], "include"))
-          C->params[this_num].include = atoi(L->value[j]);
-        else if (!strcasecmp(L->key[j], "logs"))
-          C->params[this_num].logs = atoi(L->value[j]);
-        else if (!strcasecmp(L->key[j], "corners"))
-          C->params[this_num].corners = atoi(L->value[j]);
-        /* *** this error message should say what the line and the unknown are */
-        else {
-          fprintf(stderr, "malt: Illegal option on param line in config file\n");
-          return 0;
-        }
-      }
-      return C->num_params_all;
-    } else if (!strcasecmp(L->key[i], "param_x")) {
-      /* allocate memory for a new _2D */
-      if ((C->_2D = realloc(C->_2D, (++C->num_2D) * sizeof *C->_2D)) == NULL) {  // mem:hypersexual
-        fprintf(stderr, "malt: Memory allocation error in routine 'compositLine'\n");
-        exit(EXIT_FAILURE);
-      }
-      this_num = C->num_2D - 1;
-      /* Get the line */
-      for (j = 0; j < L->length; ++j) {
-        if (!strcasecmp(L->key[j], "param_x"))
-          C->_2D[this_num].name_x = strdup(L->value[i]);  // mem:schizzo
-        else if (!strcasecmp(L->key[j], "param_y"))
-          C->_2D[this_num].name_y = strdup(L->value[j]);  // mem:foreconsent
-        /* *** this error message should say what the line and the unknown are */
-        else {
-          fprintf(stderr, "malt: Illegal option on 2D line in config file\n");
-          return 0;
-        }
-      }
-      /* check it */
-      /* does this pair already exist? */
-      for (j = 0; C->num_2D - 1 > j; ++j) {
-        if ((!strcmp(C->_2D[this_num].name_x, C->_2D[j].name_x) &&
-             !strcmp(C->_2D[this_num].name_y, C->_2D[j].name_y)) ||
-            (!strcmp(C->_2D[this_num].name_x, C->_2D[j].name_y) &&
-             !strcmp(C->_2D[this_num].name_y, C->_2D[j].name_x))) {
-          --C->num_2D;
+
+      // does this parameter already exist?
+      bool match = false;
+      int n;
+      for (n = 0; n < C->num_params_all; ++n) {
+        if (!strcmp(C->params[n].name, parameter)) {
+          match = true;
           break;
         }
       }
-      return C->num_2D; /* added by SRW 01/09/2022 */
-    }
-  }
-  fprintf(stderr, "malt: Internal error at %s:%d\n", __FILE__, __LINE__);
-  /* *** hack hack *** */
-  return 1;
-  /* *** Trent's version, which is untimely in its demse *** */
-  /* return 0; */
-}
-
-/*allocate element*/
-/*fill element*/
-int simpleLine(Builder *C, ConfigLine *L)
-{
-  /* extensions */
-  if (!strcasecmp(L->key[0], "circuit_extension"))
-    C->extensions.circuit = strdup(L->value[0]);  // mem:timetaker
-  else if (!strcasecmp(L->key[0], "parameters_extension"))
-    C->extensions.param = strdup(L->value[0]);  // mem:rupa
-  else if (!strcasecmp(L->key[0], "passfail_extension"))
-    C->extensions.passf = strdup(L->value[0]);  // mem:essentia
-  else if (!strcasecmp(L->key[0], "envelope_extension"))
-    C->extensions.envelope = strdup(L->value[0]);  // mem:trinkle
-  else if (!strcasecmp(L->key[0], "plot_extension"))
-    C->extensions.plot = strdup(L->value[0]);  // mem:irrepairable
-  /* options */
-  else if (!strcasecmp(L->key[0], "verbose"))
-    C->options.verbose = atoi(L->value[0]);
-  else if (!strcasecmp(L->key[0], "max_subprocesses")) {
-    C->options.max_subprocesses = atoi(L->value[0]);
-    assert(C->options.max_subprocesses >= 0);  // 0 means unlimited, negative is illegal
-  } else if (!strcasecmp(L->key[0], "threads")) {
-    C->options.threads = atoi(L->value[0]);
-    assert(C->options.threads > 0);  // number of threads must be at least 1
-  } else if (!strcasecmp(L->key[0], "print_terminal"))
-    C->options.print_terminal = atoi(L->value[0]);
-  else if (!strcasecmp(L->key[0], "binsearch_accuracy"))
-    C->options.binsearch_accuracy = atof(L->value[0]);
-  /* options for define */
-  else if (!strcasecmp(L->key[0], "d_simulate"))
-    C->options.d_simulate = atoi(L->value[0]);
-  else if (!strcasecmp(L->key[0], "d_envelope"))
-    C->options.d_envelope = atoi(L->value[0]);
-  /* options for margins */
-  /* options for trace nodes */
-  /* options for 2D margins */
-  else if (!strcasecmp(L->key[0], "2D_iter"))
-    C->options._2D_iter = atoi(L->value[0]);
-  /* options for corners yield */
-  else if (!strcasecmp(L->key[0], "y_search_depth"))
-    C->options.y_search_depth = atoi(L->value[0]);
-  else if (!strcasecmp(L->key[0], "y_search_width"))
-    C->options.y_search_width = atoi(L->value[0]);
-  else if (!strcasecmp(L->key[0], "y_search_steps"))
-    C->options.y_search_steps = atoi(L->value[0]);
-  else if (!strcasecmp(L->key[0], "y_max_mem_k"))
-    C->options.y_max_mem_k = atoi(L->value[0]);
-  else if (!strcasecmp(L->key[0], "y_accuracy"))
-    C->options.y_accuracy = atof(L->value[0]);
-  else if (!strcasecmp(L->key[0], "y_print_every"))
-    C->options.y_print_every = atoi(L->value[0]);
-  /* options for optimize */
-  else if (!strcasecmp(L->key[0], "o_min_iter"))
-    C->options.o_min_iter = atoi(L->value[0]);
-  else if (!strcasecmp(L->key[0], "o_max_mem_k"))
-    C->options.o_max_mem_k = atoi(L->value[0]);
-  /* options for spice */
-  else if (!strcasecmp(L->key[0], "spice_call_name")) {
-    free((void *)C->options.spice_call_name);
-    C->options.spice_call_name = L->value[0];
-    L->value[0] = NULL;  // so free() won't go wrong
-  }
-  /* parameter defaults */
-  else if (!strcasecmp(L->key[0], "nominal"))
-    C->param_defaults.nominal = atof(L->value[0]);
-  else if (!strcasecmp(L->key[0], "sigma"))
-    C->param_defaults.sigma = atof(L->value[0]);
-  else if (!strcasecmp(L->key[0], "sig_abs"))
-    C->param_defaults.sigabs = atof(L->value[0]);
-  else if (!strcasecmp(L->key[0], "min"))
-    C->param_defaults.min = atof(L->value[0]);
-  else if (!strcasecmp(L->key[0], "max"))
-    C->param_defaults.max = atof(L->value[0]);
-  else if (!strcasecmp(L->key[0], "static"))
-    C->param_defaults.staticc = atoi(L->value[0]);
-  else if (!strcasecmp(L->key[0], "include"))
-    C->param_defaults.include = atoi(L->value[0]);
-  else if (!strcasecmp(L->key[0], "logs"))
-    C->param_defaults.logs = atoi(L->value[0]);
-  else if (!strcasecmp(L->key[0], "corners"))
-    C->param_defaults.corners = atoi(L->value[0]);
-  /* node defaults */
-  else if (!strcasecmp(L->key[0], "dt"))
-    C->node_defaults.dt = atof(L->value[0]);
-  else if (!strcasecmp(L->key[0], "dx"))
-    C->node_defaults.dx = atof(L->value[0]);
-  /* composite line with only one pair */
-  else if (!strcasecmp(L->key[0], "node"))
-    compositLine(C, L);
-  else if (!strcasecmp(L->key[0], "param"))
-    compositLine(C, L);
-  /*   else if(!strcasecmp(L->key[0],"2D thingy")) */
-  /*     compositLine(C,Line); */
-  else
-    return (0);
-  return (1);
-}
-
-/*Return 1 if line is a comment or just filled with whitespace*/
-int is_comment(char *buf)
-{
-  remove_white_space(buf);
-  /* case NULL */
-  if (!*buf)
-    return (1);
-  switch (*buf) {
-  case '*':
-  case '%':
-  case '\n':
-  case '#':
-  case ';':
-    return (1);
-  default:
-    return (0);
-  }
-}
-
-int parseConfigurationFile(Builder *C, char *fileName, char **c_text)
-{
-  FILE *ptr;
-  ConfigLine Line = {NULL, NULL, 0};
-  char buf[LINE_LENGTH];
-
-  ptr = fopen(fileName, "r");
-  /* this info is saved and printed after configuration is parsed (if verbose is turned on) */
-  char text[LINE_LENGTH];
-  snprintf(text, LINE_LENGTH, "%s %s\n", ptr ? "Found:    " : "Not found:", fileName);
-  c_term_file_write(c_text, text);
-  if (!ptr)
-    return (0);
-  unsigned line_no = 0;
-  while (fgets(buf, LINE_LENGTH, ptr) != NULL) {
-    ++line_no;
-    if (!(is_comment(buf))) {
-      Line.length = 0;
-      if (parseConfigLine(&Line, buf) == NULL) {
-        fprintf(stderr, "malt: Cannot parse line in config file (%s:%u)\n", fileName, line_no);
-        exit(EXIT_FAILURE);
+      if (!match) {
+        // grow C->params by 1 (slow but whatever)
+        C->params =
+            realloc(C->params, (++C->num_params_all) * sizeof *C->params);  // mem:restringer
+        C->params[n] = PARAM_DEFAULT;
       }
-      if (Line.length > 1) {
-        if (!(compositLine(C, &Line))) {
-          fprintf(stderr, "malt: Cannot parse line in config file (%s:%u)\n", fileName, line_no);
-          exit(EXIT_FAILURE);
-        }
-      } else if (Line.length == 1)
-        if (!(simpleLine(C, &Line))) {
-          fprintf(stderr, "malt: Cannot parse line in config file (%s:%u)\n", fileName, line_no);
-          fprintf(stderr, "%s = %s\n", Line.key[0], Line.value[0]);
-          exit(EXIT_FAILURE);
-        }
+
+      // populate/overwrite C->params[n] with the contents of `values`
+      // parameter name:
+      C->params[n].name = strdup(parameter);  // mem:reminiscer
+
+      // nominal (required field):
+      if (!read_a_double(&C->params[n].nominal, values, "nominal")) {
+        error(log, "Parameter '%s' has no nominal value\n", parameter);
+      }
+
+      // sigma, sigabs:
+      // TODO: parse a subtable {percent = 5} or whatever
+      toml_datum_t sigma = toml_double_in(values, "sigma");
+      toml_datum_t sigabs = toml_double_in(values, "sig_abs");
+      if (sigma.ok && !sigabs.ok) {
+        C->params[n].sigma = sigma.u.d;
+      } else if (sigabs.ok && !sigma.ok) {
+        C->params[n].sigabs = sigabs.u.d;
+      } else {
+        error(log, "Parameter '%s' must have exactly one of sigma or sig_abs\n", parameter);
+        return 0;
+      }
+
+      // min, max:
+      C->params[n].top_min |= read_a_double(&C->params[n].min, values, "min");
+      C->params[n].top_max |= read_a_double(&C->params[n].max, values, "max");
+
+      // nom_min, nom_max:
+      C->params[n].isnommin |= read_a_double(&C->params[n].nom_min, values, "nom_min");
+      C->params[n].isnommax |= read_a_double(&C->params[n].nom_max, values, "nom_max");
+
+      // various flags:
+      read_a_bool(&C->params[n].staticc, values, "static");
+      read_a_bool(&C->params[n].include, values, "include");
+      read_a_bool(&C->params[n].logs, values, "logs");
+      read_a_bool(&C->params[n].corners, values, "corners");
     }
+    return i;
   }
-  for (int i = 0; i < Line.length; ++i) {
-    free(Line.key[i]);    // mem:smutchier
-    free(Line.value[i]);  // mem:hypersentimental
-  }
-  free(Line.key);    // mem:kiekie
-  free(Line.value);  // mem:semisoun
-  return (1);
+  info(log, "No [parameters] in config file\n");
+  return 0;
 }
 
-/* List paths that are candidates for having a malt.config in the current directory (`path`) and
- * all parent directories up to either / or the user's $HOME.
+/* Reads the [extensions] table containing file extensions from the TOML file, if present.
+ * Returns the number of extensions successfully read. */
+static int read_extensions(Builder *C, toml_table_t *t, FILE *log)
+{
+  (void)log;
+  toml_table_t *extensions = toml_table_in(t, "extensions");
+  int n = 0;
+  if (extensions) {
+    n += read_a_string(&C->extensions.circuit, extensions, "circuit");    // mem:timetaker
+    n += read_a_string(&C->extensions.param, extensions, "parameters");   // mem:rupa
+    n += read_a_string(&C->extensions.passf, extensions, "passfail");     // mem:essentia
+    n += read_a_string(&C->extensions.envelope, extensions, "envelope");  // mem:trinkle
+    n += read_a_string(&C->extensions.plot, extensions, "plot");          // mem:irrepairable
+  }
+  return n;
+}
+
+/* Reads the [define] table (define options) from the TOML file, if present.
+ * Returns the number of key-value pairs successfully converted. */
+static int read_define_opts(Builder *C, toml_table_t *t, FILE *log)
+{
+  (void)log;
+  toml_table_t *define = toml_table_in(t, "define");
+  int n = 0;
+  n += read_a_bool(&C->options.d_simulate, define, "simulate");
+  n += read_a_bool(&C->options.d_envelope, define, "envelope");
+  return n;
+}
+
+/* Reads the [yield] table (corners-yield options) from the TOML file, if present.
+ * Returns the number of key-value pairs successfully converted. */
+static int read_yield_opts(Builder *C, toml_table_t *t, FILE *log)
+{
+  (void)log;
+  toml_table_t *yield = toml_table_in(t, "yield");
+  int n = 0;
+  n += read_an_int(&C->options.y_search_depth, yield, "search_depth");
+  n += read_an_int(&C->options.y_search_width, yield, "search_width");
+  n += read_an_int(&C->options.y_search_steps, yield, "search_steps");
+  // TODO: parse a subtable {k: 4194304} or something instead of units in the name (also in
+  // optimize)
+  n += read_an_int(&C->options.y_max_mem_k, yield, "max_mem_k");
+  n += read_a_double(&C->options.y_accuracy, yield, "accuracy");
+  // TODO: check that print_every is working optimally
+  n += read_an_int(&C->options.y_print_every, yield, "print_every");
+  return n;
+}
+
+/* Reads the [optimize] table (optimization options) from the TOML file, if present.
+ * Returns the number of key-value pairs successfully converted. */
+static int read_optimize_opts(Builder *C, toml_table_t *t, FILE *log)
+{
+  (void)log;
+  toml_table_t *optimize = toml_table_in(t, "optimize");
+  int n = 0;
+  n += read_an_int(&C->options.o_min_iter, optimize, "min_iter");
+  n += read_an_int(&C->options.o_min_iter, optimize, "max_mem_k");
+  return n;
+}
+
+/* Reads the [xy] table (2D sweep settings) from the TOML file, if present.
+ * Returns the number of sweeps successfully converted. */
+static int read_xy_sweeps(Builder *C, toml_table_t *t, FILE *log)
+{
+  toml_table_t *xy = toml_table_in(t, "xy");
+  int len_sweeps = 0;
+  if (xy) {
+    toml_array_t *sweeps = toml_array_in(xy, "sweeps");
+    if (sweeps) {
+      len_sweeps = toml_array_nelem(sweeps);
+      // overwrite old sweeps
+      // FIXME: clobbering leaks memory for .name_x, .name_y
+      C->_2D = realloc(C->_2D, len_sweeps * sizeof *C->_2D);  // mem:hypersexual
+      if (C->num_2D != 0) {
+        warn(log, "Overwriting previously configured 2D sweeps\n");
+      }
+      C->num_2D = len_sweeps;
+      for (int n = 0; n < len_sweeps; ++n) {
+        toml_table_t *sweep = toml_table_at(sweeps, n);
+        if (!sweep) {
+          error(log, "2D sweep #%d is not a table\n", n);
+        }
+        toml_datum_t x = toml_string_in(sweep, "x");  // mem:schizzo
+        toml_datum_t y = toml_string_in(sweep, "y");  // mem:foreconsent
+        if (x.ok && y.ok) {
+          C->_2D[n].name_x = x.u.s;
+          C->_2D[n].name_y = y.u.s;
+        } else {
+          error(log, "2D sweep #%d must define both x and y parameters\n", n);
+        }
+      }
+    }
+    toml_datum_t iterations = toml_int_in(xy, "iterations");
+    if (iterations.ok) {
+      C->options._2D_iter = iterations.u.i;
+    }
+  }
+  return len_sweeps;
+}
+
+/* If there is a file at *filename, open and parse it.
+ * Returns 1 if the file was successfully parsed, 0 if the file does not exist; aborts otherwise. */
+static int try_parse_file(Builder *C, char *filename, FILE *log)
+{
+  FILE *fp = fopen(filename, "r");
+
+  if (!fp) {
+    return 0;
+  }
+
+  char errbuf[200];
+  toml_table_t *t = toml_parse_file(fp, errbuf, sizeof errbuf);
+  fclose(fp);
+  if (!t) {
+    error(log, "Cannot parse TOML: %s\n", errbuf);
+  }
+
+  // options:
+  // TODO: reconcile verbosity from command line and configs
+  read_a_bool(&C->options.verbose, t, "verbose");
+  read_an_int(&C->options.max_subprocesses, t, "max_subprocesses");
+  assert(C->options.max_subprocesses >= 0);  // 0 means unlimited, negative is illegal
+  read_an_int(&C->options.threads, t, "threads");
+  assert(C->options.threads > 0);  // number of threads must be at least 1
+  // TODO: check that print_terminal is working as intended
+  read_a_bool(&C->options.print_terminal, t, "print_terminal");
+  read_a_double(&C->options.binsearch_accuracy, t, "binsearch_accuracy");
+  // FIXME: I think this leaks memory when successful
+  read_a_string(&C->options.spice_call_name, t, "spice_call_name");
+
+  read_nodes(C, t, log);
+  read_parameters(C, t, log);
+  read_extensions(C, t, log);
+  read_define_opts(C, t, log);
+  // read_margins_opts(C, t, log);
+  // read_trace_opts(C, t, log);
+  read_yield_opts(C, t, log);
+  read_optimize_opts(C, t, log);
+  read_xy_sweeps(C, t, log);
+
+  toml_free(t);
+
+  return 1;
+}
+
+/* List paths that are candidates for having a Malt.toml in the current directory (`path`) and all
+ * parent directories up to either / or the user's $HOME.
  *
  * Sets `*listp` to an array of pointers to paths. Returns the number of paths. Both the array and
- * the individual paths need to be freed.
- */
-int getConfigFileList(char ***listp, char *path)
+ * the individual paths need to be freed.  */
+static int config_file_candidates(char ***listp, char *path)
 {
   const char *home = getenv("HOME");
   int len = 0, cap = 10;
@@ -724,8 +702,8 @@ int getConfigFileList(char ***listp, char *path)
         assert(*listp);
       }
 
-      // add path/malt.config to the list
-      (*listp)[len] = resprintf(NULL, "%s/malt.config", path);  // mem:hypophloeodal
+      // add path/Malt.toml to the candidate list
+      (*listp)[len] = resprintf(NULL, "%s/Malt.toml", path);  // mem:hypophloeodal
       ++len;
     }
 
@@ -784,47 +762,83 @@ static void exclude_params_corn(Configuration *C)
 #undef include_now
 }
 
-Configuration *Configure(char *command_name, int function, char **c_text, FILE *log)
+/* Finds the longest filename that starts with `prefix`, ends with `extension`, and refers to a
+ * file that exists. Stores the result in `*filename`.  */
+static void most_specific_filename(char *filename, const char *extension, const char *prefix)
+{
+  char *file_prefix = strdup(prefix);  // mem:watchless
+  char *temp = NULL;
+  for (;;) {
+    resprintf(&temp, "%s%s", file_prefix, extension);  // mem:tautonymic
+    FILE *fd;
+    if ((fd = fopen(temp, "r"))) {
+      strcpy(filename, temp);
+      fclose(fd);
+      break;
+    } else {
+      char *last_dot = strrchr(file_prefix, '.');
+      if (last_dot == NULL) {
+        /* TODO: figure out what happens if this is never fixed */
+        filename[0] = '\0';
+        break;
+      } else {
+        *last_dot = '\0';
+      }
+    }
+  }
+  free(file_prefix);  // mem:watchless
+  free(temp);         // mem:tautonymic
+}
+
+/* Finds and parses all applicable configuration files.
+ *
+ * There are two kinds of configuration files that may apply:
+ * - Malt.toml files, which may be found in the current directory or any parent up to the user's
+ *   home directory or /. All of these files are parsed.
+ * - Run-specific <circuit>.toml, where <circuit> is a dotted list of identifiers, which are found
+ *   only in the current directory. Only the most specific file (longest prefix of
+ *   args.circuit_name) is parsed.  (This is a bug.) */
+Configuration *Configure(const Args *args, FILE *log)
 {
   FILE *fd, *fp;
   int levels, files;
-  char *dot, *file_dot;
-  char *cpe_name[5];
-  const char *cpe_ext[5];
-  int i, stop, some;
   Builder B;
-  char *filename_temp;
 
   builder_init(&B);
   B.log = log;
   /* function and command_name given on command line */
-  B.function = function;
-  B.command = command_name;
+  B.function = args->function;
+  B.command = args->circuit_name;
 
-  c_term_file_write(c_text, "Parsing the malt.config file\n"
-                            "and the run-specific .config file\n");
+  if (args->verbosity > 0) {
+    info(log, "Parsing the Malt.toml file "
+              "and the run-specific .toml file\n");
+  }
 
   char *cwd = getcwd(NULL, 0);
   char **filelist = NULL;
-  files = getConfigFileList(&filelist, cwd);
+  files = config_file_candidates(&filelist, cwd);
   free(cwd);
 
-  for (some = 0, levels = files - 1; levels >= 0; --levels) {
-    if (parseConfigurationFile(&B, filelist[levels], c_text))
-      some = 1;
+  bool some = false;
+  for (levels = files - 1; levels >= 0; --levels) {
+    if (try_parse_file(&B, filelist[levels], log)) {
+      info(log, "Parsed: '%s'\n", filelist[levels]);
+      some = true;
+    }
     free(filelist[levels]);  // mem:hypophloeodal
   }
   free(filelist);  // mem:nonaddicted
   if (!some) {
     /* Trigger Configuration Setup */
-    fprintf(stderr, "No malt.config configuration files found\n");
-    if ((fp = fopen("malt.config", "w")) == NULL) {
-      fprintf(stderr, "malt: Cannot write to the %s file\n", "malt.config");
-      exit(EXIT_FAILURE);
+    warn(log, "No Malt.toml configuration files found\n");
+    if ((fp = fopen("Malt.toml", "w")) != NULL) {
+      info(log, "Generating a default configuration file './Malt.toml'\n");
+    } else {
+      error(log, "Cannot open './Malt.toml' for writing\n");
     }
     builder_debug(&B, fp);
     fclose(fp);
-    fprintf(stderr, "Generating a default configuration file './malt.config'\n");
   }
   /* file_name memory allocation */
   /* play it safe and simple */
@@ -839,56 +853,37 @@ Configuration *Configure(char *command_name, int function, char **c_text, FILE *
   B.file_names.config = malloc(stringy);    // mem:synurae
   B.file_names.env_call = malloc(stringy);  // mem:semishady
   B.file_names.plot = malloc(stringy);      // mem:federalizes
-  file_dot = malloc(stringy);               // mem:watchless
   B.file_names.iter = malloc(stringy);      // mem:myrcene
   B.file_names.pname = malloc(stringy);     // mem:physnomy
-  filename_temp = malloc(stringy * 2);      // mem:tautonymic
   /* the circuit, param, and envelope files we will be using */
   /* determined from the command line */
-  /* find the most specific file name that applies */
-  /* loopable pointers */
-  cpe_name[0] = B.file_names.circuit;
-  cpe_name[1] = B.file_names.param;
-  cpe_name[4] = B.file_names.passf;
-  cpe_name[2] = B.file_names.envelope;
-  cpe_name[3] = B.file_names.config;
-  cpe_ext[0] = B.extensions.circuit;
-  cpe_ext[1] = B.extensions.param;
-  cpe_ext[4] = B.extensions.passf;
-  cpe_ext[2] = B.extensions.envelope;
-  cpe_ext[3] = B.extensions.config;
-  for (i = 0; 5 > i; i++) {
-    strcpy(file_dot, B.command);
-    stop = 0;
-    do {
-      sprintf(filename_temp, "%s%s", file_dot, cpe_ext[i]);
-      if ((fd = fopen(filename_temp, "r"))) {
-        strcpy(cpe_name[i], filename_temp);
-        stop = 1;
-        fclose(fd);
-      } else if ((dot = (char *)strrchr(file_dot, '.')) != NULL) {
-        *dot = '\0';
-      } else {
-        stop = 1;
-        *cpe_name[i] = '\0';
-      }
-    } while (!stop);
-  }
+
+#define find_most_specific_filename(purpose) \
+  most_specific_filename(B.file_names.purpose, B.extensions.purpose, B.command)
+  find_most_specific_filename(circuit);
+  find_most_specific_filename(param);
+  find_most_specific_filename(envelope);
+  find_most_specific_filename(config);
+  find_most_specific_filename(passf);
+#undef find_most_specific_filename
+
   /* parse the config file */
-  parseConfigurationFile(&B, cpe_name[3], c_text);
+  if (try_parse_file(&B, B.file_names.config, log)) {
+    info(log, "Parsed '%s'\n", B.file_names.config);
+  }
 
   /* write the final configuration to the final configuration file */
   /* overwrite the file if it already exists */
-  sprintf(filename_temp, "%s%s.%c", B.command, B.extensions.config, B.function);
+  char *filename_temp = NULL;
+  resprintf(&filename_temp, "%s%s.%c", B.command, B.extensions.config, B.function);
   if ((fd = fopen(filename_temp, "w"))) {
     builder_debug(&B, fd);
     fclose(fd);
+    info(log, "Configuration written to '%s'\n", filename_temp);
   } else {
-    fprintf(stderr, "malt: Can not write to the '%s' file\n", filename_temp);
+    warn(log, "Cannot open '%s' for writing\n", filename_temp);
   }
-
-  free(file_dot);       // mem:watchless
-  free(filename_temp);  // mem:tautonymic
+  free(filename_temp);
 
   // move data from builder to configuration
   Configuration *C = malloc(sizeof *C);  // mem:circumgyrate
@@ -911,21 +906,4 @@ Configuration *Configure(char *command_name, int function, char **c_text, FILE *
   exclude_params_corn(C);
 
   return C;
-}
-
-// Append text to the end of the buffer pointed to by *c_text, reallocating as
-// necessary, unless c_text is NULL.
-// This is a pretty gross function because it has to traverse all of c_text
-void c_term_file_write(char **c_text, const char *text)
-{
-  if (!c_text) {
-    return;
-  }
-  if (*c_text) {
-    *c_text = realloc(*c_text, strlen(*c_text) + strlen(text) + 1);  // mem:articulately
-    strcat(*c_text, text);
-  } else {
-    *c_text = malloc(strlen(text) + 1);  // mem:articulately
-    strcpy(*c_text, text);
-  }
 }

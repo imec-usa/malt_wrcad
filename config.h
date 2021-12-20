@@ -112,7 +112,9 @@ typedef struct config {
   _2D *_2D;
 } Configuration;
 
-Configuration *Configure(char *command_name, int function, char **c_text, FILE *log);
+typedef struct args Args;
+
+Configuration *Configure(const Args *args, FILE *log);
 void freeConfiguration(Configuration *C);
 
 #endif

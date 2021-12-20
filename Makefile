@@ -17,4 +17,4 @@ clean:
 	@  rm -rf build
 
 format:
-	@  ./run-clang-format.py -i *.[ch]
+	@  ./run-clang-format.py -i [^t]*.[ch]
