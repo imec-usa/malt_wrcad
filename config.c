@@ -35,79 +35,16 @@ static const Param PARAM_DEFAULT = {
     .corners = 0,
 };
 
-/* Print formatted output (with an (info) prefix) to stderr and also to the given log file (if
- * non-null). */
-static void info(FILE *log, const char *fmt, ...)
-{
-  va_list args;
-  // print to terminal
-  fprintf(stderr, "malt: (info) ");
-  va_start(args, fmt);
-  vfprintf(stderr, fmt, args);
-  va_end(args);
-
-  // print to log file
-  fprintf(log, "malt: (info) ");
-  va_start(args, fmt);
-  vfprintf(log, fmt, args);
-  va_end(args);
-
-  // flush logfile
-  fflush(log);
-}
-
-/* Like `info`, but prints a (warning) prefix. */
-static void warn(FILE *log, const char *fmt, ...)
-{
-  va_list args;
-  // print to terminal
-  fprintf(stderr, "malt: (warning) ");
-  va_start(args, fmt);
-  vfprintf(stderr, fmt, args);
-  va_end(args);
-
-  // print to log file
-  fprintf(log, "malt: (warning) ");
-  va_start(args, fmt);
-  vfprintf(log, fmt, args);
-  va_end(args);
-
-  // flush logfile
-  fflush(log);
-}
-
-/* Like `info`, but prints an (error) prefix, and terminates the program with EXIT_FAILURE. */
-__attribute__((noreturn)) static void error(FILE *log, const char *fmt, ...)
-{
-  va_list args;
-  // print to terminal
-  fprintf(stderr, "malt: (error) ");
-  va_start(args, fmt);
-  vfprintf(stderr, fmt, args);
-  va_end(args);
-
-  // print to log file
-  fprintf(log, "malt: (error) ");
-  va_start(args, fmt);
-  vfprintf(log, fmt, args);
-  va_end(args);
-
-  // close logfile
-  fclose(log);
-  exit(EXIT_FAILURE);
-}
-
 typedef struct builder {
   int function;
   char *command;
+  FILE *log;
 
   struct file_names file_names;
 
   struct extensions extensions;
 
   struct options options;
-
-  FILE *log;
 
   Node node_defaults;
   Param param_defaults;
@@ -272,11 +209,12 @@ void freeConfiguration(Configuration *C)
   free(C);  // mem:circumgyrate
 }
 
-void builder_init(Builder *C)
+static void builder_init(Builder *C, const Args *args, FILE *log)
 {
-  /* allocate everything */
-
-  C->log = NULL;
+  // the following fields are always initialized so that they are available for debugging:
+  C->function = args->function;
+  C->command = args->circuit_name;
+  C->log = log;
   /* initialize everything to internal defaults */
   /* internal file names */
   C->file_names.circuit = NULL;
@@ -412,7 +350,7 @@ static int read_envelope(Builder *C, toml_table_t *t)
 /* Read the `nodes` list from the top level of the toml file. Also reads [envelope] if nodes are
  * present.
  * Returns the number of nodes successfully read. */
-static int read_nodes(Builder *C, toml_table_t *t, FILE *log)
+static int read_nodes(Builder *C, toml_table_t *t)
 {
   int len_nodes = 0;
   int has_envelope = read_envelope(C, t);
@@ -420,14 +358,14 @@ static int read_nodes(Builder *C, toml_table_t *t, FILE *log)
   if (nodes) {
     // nodes are present: [envelope] must be too, for defaults
     if (!has_envelope) {
-      error(log, "Missing [envelope] in TOML file containing nodes list\n");
+      error("Missing [envelope] in TOML file containing nodes list\n");
     }
     len_nodes = toml_array_nelem(nodes);
     // overwrite nodes if already specified by earlier configurations
     // FIXME: clobbering leaks memory for .name
     C->nodes = realloc(C->nodes, len_nodes * sizeof *C->nodes);
     if (C->num_nodes != 0) {
-      warn(log, "Overwriting previously configured node list\n");
+      warn("Overwriting previously configured node list\n");
     }
     C->num_nodes = len_nodes;
     for (int n = 0; n < len_nodes; ++n) {
@@ -443,9 +381,9 @@ static int read_nodes(Builder *C, toml_table_t *t, FILE *log)
         toml_table_t *node = toml_table_at(nodes, n);
         if (node) {
           // TODO: permit nodes to have metadata, and check that dx, dt are nonzero
-          error(log, "Table not supported for node %zu (this is a bug in Malt)\n", n);
+          error("Table not supported for node %zu (this is a bug in Malt)\n", n);
         } else {
-          error(log, "Node %zu is neither a string nor a table\n", n);
+          error("Node %zu is neither a string nor a table\n", n);
         }
       }
     }
@@ -455,7 +393,7 @@ static int read_nodes(Builder *C, toml_table_t *t, FILE *log)
 
 /* Read the [parameters] table from the TOML file, if present.
  * Returns the number of parameters successfully read.  */
-static int read_parameters(Builder *C, toml_table_t *t, FILE *log)
+static int read_parameters(Builder *C, toml_table_t *t)
 {
   toml_table_t *parameters = toml_table_in(t, "parameters");
   if (parameters) {
@@ -467,7 +405,7 @@ static int read_parameters(Builder *C, toml_table_t *t, FILE *log)
         break;
       toml_table_t *values = toml_table_in(parameters, parameter);
       if (!values) {
-        error(log, "[parameters.%s] is not a table\n", parameter);
+        error("[parameters.%s] is not a table\n", parameter);
       }
 
       // does this parameter already exist?
@@ -492,7 +430,7 @@ static int read_parameters(Builder *C, toml_table_t *t, FILE *log)
 
       // nominal (required field):
       if (!read_a_double(&C->params[n].nominal, values, "nominal")) {
-        error(log, "Parameter '%s' has no nominal value\n", parameter);
+        error("Parameter '%s' has no nominal value\n", parameter);
       }
 
       // sigma, sigabs:
@@ -504,7 +442,7 @@ static int read_parameters(Builder *C, toml_table_t *t, FILE *log)
       } else if (sigabs.ok && !sigma.ok) {
         C->params[n].sigabs = sigabs.u.d;
       } else {
-        error(log, "Parameter '%s' must have exactly one of sigma or sig_abs\n", parameter);
+        error("Parameter '%s' must have exactly one of sigma or sig_abs\n", parameter);
         return 0;
       }
 
@@ -524,15 +462,14 @@ static int read_parameters(Builder *C, toml_table_t *t, FILE *log)
     }
     return i;
   }
-  info(log, "No [parameters] in config file\n");
+  info("No [parameters] in config file\n");
   return 0;
 }
 
 /* Reads the [extensions] table containing file extensions from the TOML file, if present.
  * Returns the number of extensions successfully read. */
-static int read_extensions(Builder *C, toml_table_t *t, FILE *log)
+static int read_extensions(Builder *C, toml_table_t *t)
 {
-  (void)log;
   toml_table_t *extensions = toml_table_in(t, "extensions");
   int n = 0;
   if (extensions) {
@@ -547,9 +484,8 @@ static int read_extensions(Builder *C, toml_table_t *t, FILE *log)
 
 /* Reads the [define] table (define options) from the TOML file, if present.
  * Returns the number of key-value pairs successfully converted. */
-static int read_define_opts(Builder *C, toml_table_t *t, FILE *log)
+static int read_define_opts(Builder *C, toml_table_t *t)
 {
-  (void)log;
   toml_table_t *define = toml_table_in(t, "define");
   int n = 0;
   n += read_a_bool(&C->options.d_simulate, define, "simulate");
@@ -559,9 +495,8 @@ static int read_define_opts(Builder *C, toml_table_t *t, FILE *log)
 
 /* Reads the [yield] table (corners-yield options) from the TOML file, if present.
  * Returns the number of key-value pairs successfully converted. */
-static int read_yield_opts(Builder *C, toml_table_t *t, FILE *log)
+static int read_yield_opts(Builder *C, toml_table_t *t)
 {
-  (void)log;
   toml_table_t *yield = toml_table_in(t, "yield");
   int n = 0;
   n += read_an_int(&C->options.y_search_depth, yield, "search_depth");
@@ -578,9 +513,8 @@ static int read_yield_opts(Builder *C, toml_table_t *t, FILE *log)
 
 /* Reads the [optimize] table (optimization options) from the TOML file, if present.
  * Returns the number of key-value pairs successfully converted. */
-static int read_optimize_opts(Builder *C, toml_table_t *t, FILE *log)
+static int read_optimize_opts(Builder *C, toml_table_t *t)
 {
-  (void)log;
   toml_table_t *optimize = toml_table_in(t, "optimize");
   int n = 0;
   n += read_an_int(&C->options.o_min_iter, optimize, "min_iter");
@@ -590,7 +524,7 @@ static int read_optimize_opts(Builder *C, toml_table_t *t, FILE *log)
 
 /* Reads the [xy] table (2D sweep settings) from the TOML file, if present.
  * Returns the number of sweeps successfully converted. */
-static int read_xy_sweeps(Builder *C, toml_table_t *t, FILE *log)
+static int read_xy_sweeps(Builder *C, toml_table_t *t)
 {
   toml_table_t *xy = toml_table_in(t, "xy");
   int len_sweeps = 0;
@@ -602,13 +536,13 @@ static int read_xy_sweeps(Builder *C, toml_table_t *t, FILE *log)
       // FIXME: clobbering leaks memory for .name_x, .name_y
       C->_2D = realloc(C->_2D, len_sweeps * sizeof *C->_2D);  // mem:hypersexual
       if (C->num_2D != 0) {
-        warn(log, "Overwriting previously configured 2D sweeps\n");
+        warn("Overwriting previously configured 2D sweeps\n");
       }
       C->num_2D = len_sweeps;
       for (int n = 0; n < len_sweeps; ++n) {
         toml_table_t *sweep = toml_table_at(sweeps, n);
         if (!sweep) {
-          error(log, "2D sweep #%d is not a table\n", n);
+          error("2D sweep #%d is not a table\n", n);
         }
         toml_datum_t x = toml_string_in(sweep, "x");  // mem:schizzo
         toml_datum_t y = toml_string_in(sweep, "y");  // mem:foreconsent
@@ -616,7 +550,7 @@ static int read_xy_sweeps(Builder *C, toml_table_t *t, FILE *log)
           C->_2D[n].name_x = x.u.s;
           C->_2D[n].name_y = y.u.s;
         } else {
-          error(log, "2D sweep #%d must define both x and y parameters\n", n);
+          error("2D sweep #%d must define both x and y parameters\n", n);
         }
       }
     }
@@ -630,7 +564,7 @@ static int read_xy_sweeps(Builder *C, toml_table_t *t, FILE *log)
 
 /* If there is a file at *filename, open and parse it.
  * Returns 1 if the file was successfully parsed, 0 if the file does not exist; aborts otherwise. */
-static int try_parse_file(Builder *C, char *filename, FILE *log)
+static int try_parse_file(Builder *C, char *filename)
 {
   FILE *fp = fopen(filename, "r");
 
@@ -642,7 +576,7 @@ static int try_parse_file(Builder *C, char *filename, FILE *log)
   toml_table_t *t = toml_parse_file(fp, errbuf, sizeof errbuf);
   fclose(fp);
   if (!t) {
-    error(log, "Cannot parse TOML: %s\n", errbuf);
+    error("Cannot parse TOML: %s\n", errbuf);
   }
 
   // options:
@@ -658,15 +592,15 @@ static int try_parse_file(Builder *C, char *filename, FILE *log)
   // FIXME: I think this leaks memory when successful
   read_a_string(&C->options.spice_call_name, t, "spice_call_name");
 
-  read_nodes(C, t, log);
-  read_parameters(C, t, log);
-  read_extensions(C, t, log);
-  read_define_opts(C, t, log);
-  // read_margins_opts(C, t, log);
-  // read_trace_opts(C, t, log);
-  read_yield_opts(C, t, log);
-  read_optimize_opts(C, t, log);
-  read_xy_sweeps(C, t, log);
+  read_nodes(C, t);
+  read_parameters(C, t);
+  read_extensions(C, t);
+  read_define_opts(C, t);
+  // read_margins_opts(C, t);
+  // read_trace_opts(C, t);
+  read_yield_opts(C, t);
+  read_optimize_opts(C, t);
+  read_xy_sweeps(C, t);
 
   toml_free(t);
 
@@ -827,16 +761,13 @@ Configuration *Configure(const Args *args, FILE *log)
   FILE *fd, *fp;
   int levels, files;
   Builder B;
+  Builder *C = &B;  // so we can use info, warn, error macros which assume a pointer
 
-  builder_init(&B);
-  B.log = log;
-  /* function and command_name given on command line */
-  B.function = args->function;
-  B.command = args->circuit_name;
+  builder_init(&B, args, log);
 
   if (args->verbosity > 0) {
-    info(log, "Parsing the Malt.toml file "
-              "and the run-specific .toml file\n");
+    info("Parsing the Malt.toml file "
+         "and the run-specific .toml file\n");
   }
 
   char *cwd = getcwd(NULL, 0);
@@ -846,8 +777,8 @@ Configuration *Configure(const Args *args, FILE *log)
 
   bool some = false;
   for (levels = files - 1; levels >= 0; --levels) {
-    if (try_parse_file(&B, filelist[levels], log)) {
-      info(log, "Parsed: '%s'\n", filelist[levels]);
+    if (try_parse_file(&B, filelist[levels])) {
+      info("Parsed: '%s'\n", filelist[levels]);
       some = true;
     }
     free(filelist[levels]);  // mem:hypophloeodal
@@ -855,11 +786,11 @@ Configuration *Configure(const Args *args, FILE *log)
   free(filelist);  // mem:nonaddicted
   if (!some) {
     /* Trigger Configuration Setup */
-    warn(log, "No Malt.toml configuration files found\n");
+    warn("No Malt.toml configuration files found\n");
     if ((fp = fopen("Malt.toml", "w")) != NULL) {
-      info(log, "Generating a default configuration file './Malt.toml'\n");
+      info("Generating a default configuration file './Malt.toml'\n");
     } else {
-      error(log, "Cannot open './Malt.toml' for writing\n");
+      error("Cannot open './Malt.toml' for writing\n");
     }
     builder_debug(&B, fp);
     fclose(fp);
@@ -892,8 +823,8 @@ Configuration *Configure(const Args *args, FILE *log)
 #undef find_most_specific_filename
 
   /* parse the config file */
-  if (try_parse_file(&B, B.file_names.config, log)) {
-    info(log, "Parsed '%s'\n", B.file_names.config);
+  if (try_parse_file(&B, B.file_names.config)) {
+    info("Parsed '%s'\n", B.file_names.config);
   }
 
   /* write the final configuration to the final configuration file */
@@ -903,9 +834,9 @@ Configuration *Configure(const Args *args, FILE *log)
   if ((fd = fopen(filename_temp, "w"))) {
     builder_debug(&B, fd);
     fclose(fd);
-    info(log, "Configuration written to '%s'\n", filename_temp);
+    info("Configuration written to '%s'\n", filename_temp);
   } else {
-    warn(log, "Cannot open '%s' for writing\n", filename_temp);
+    warn("Cannot open '%s' for writing\n", filename_temp);
   }
   free(filename_temp);
 

@@ -89,16 +89,16 @@ struct options {
 
 typedef struct config {
   int function;
-  int func_init;
   const char *command;
+  FILE *log;
+
+  int func_init;
 
   struct file_names file_names;
 
   struct extensions extensions;
 
   struct options options;
-
-  FILE *log;
 
   int num_nodes;
   const Node *nodes;

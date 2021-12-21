@@ -14,6 +14,21 @@ typedef struct args {
 void strchrcat(char *, int);
 char *resprintf(char **restrict strp, const char *fmt, ...);
 void lprintf(const Configuration *, const char *, ...);
+void malt_status(FILE *, const char *, ...);
+
+#define info(format, ...)                                       \
+  {                                                             \
+    malt_status(C->log, "malt: (info) " format, ##__VA_ARGS__); \
+  }
+#define warn(format, ...)                                          \
+  {                                                                \
+    malt_status(C->log, "malt: (warning) " format, ##__VA_ARGS__); \
+  }
+#define error(format, ...)                                       \
+  {                                                              \
+    malt_status(C->log, "malt: (error) " format, ##__VA_ARGS__); \
+    exit(EXIT_FAILURE);                                          \
+  }
 
 #define MALTUSAGE "malt [-h] {-d|-m|-t|-2|-y|-o} <circuit_name>[.<ext_1>[.<ext_2>[...]]]\n"
 #define MALTHELP                                                            \

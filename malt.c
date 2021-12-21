@@ -179,6 +179,24 @@ void lprintf(const Configuration *C, const char *fmt, ...)
   fflush(C->log);
 }
 
+/* Print formatted status message both to stderr and to log. */
+void malt_status(FILE *log, const char *format, ...)
+{
+  va_list args;
+  // print to terminal
+  va_start(args, format);
+  vfprintf(stderr, format, args);
+  va_end(args);
+
+  // print to log file
+  va_start(args, format);
+  vfprintf(log, format, args);
+  va_end(args);
+
+  // flush logfile
+  fflush(log);
+}
+
 /* Works like sprintf, but (re)allocates beforehand
  * Implementation adapted from:
  * https://stackoverflow.com/questions/4899221/substitute-or-workaround-for-asprintf-on-aix/4899487#4899487
