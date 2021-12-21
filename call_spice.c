@@ -128,7 +128,7 @@ pid_t start_spice(const Configuration *C, double accuracy, double *pc, double *p
   if (0 == wrspice) {
     // child: call spice
     freopen("/dev/null", "w", stdin);  // hack to force batch mode is hacky
-    if (C->options.verbose) {
+    if (C->options.spice_verbose) {
       freopen(".verbage", "w", stdout);
     } else {
       freopen("/dev/null", "w", stdout);

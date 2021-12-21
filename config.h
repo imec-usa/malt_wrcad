@@ -65,7 +65,7 @@ struct extensions {
 };
 
 struct options {
-  int verbose;
+  int spice_verbose;
   int threads;
   int max_subprocesses;
   int print_terminal;

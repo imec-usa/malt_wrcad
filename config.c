@@ -192,7 +192,7 @@ static void builder_debug(const Builder *B, FILE *fp)
     fprintf(fp, "spice_call_name = %s\n", B->options.spice_call_name);
   fprintf(fp, "max_subprocesses = %d\n", B->options.max_subprocesses);
   fprintf(fp, "threads = %d\n", B->options.threads);
-  fprintf(fp, "verbose = %d\n", B->options.verbose);
+  fprintf(fp, "verbose = %d\n", B->options.spice_verbose);
   fprintf(fp, "print_terminal = %d\n", B->options.print_terminal);
   fprintf(fp, "\n***  Options for Define  ***\n");
   fprintf(fp, "d_simulate = %d\n", B->options.d_simulate);
@@ -314,7 +314,7 @@ void builder_init(Builder *C)
   /* options */
   C->options.binsearch_accuracy = 0.1;
   C->options.spice_call_name = strdup("wrspice");  // mem:descendentalism
-  C->options.verbose = 0;
+  C->options.spice_verbose = 0;
   C->options.threads = 16;          // default # threads: 16
   C->options.max_subprocesses = 0;  // default # jobs: unlimited
   C->options.print_terminal = 1;
@@ -341,7 +341,7 @@ void builder_init(Builder *C)
  * integer value.
  * Returns 1 and stores the result in *dest if present; returns 0 otherwise. */
 // TODO: replace int -> bool
-static int read_a_bool(int *dest, toml_table_t *values, const char *key)
+__attribute__((nonnull)) static int read_a_bool(int *dest, toml_table_t *values, const char *key)
 {
   toml_datum_t value = toml_bool_in(values, key);
   if (value.ok) {
@@ -354,7 +354,7 @@ static int read_a_bool(int *dest, toml_table_t *values, const char *key)
 
 /* Reads an integer from the table `values`.
  * Returns 1 and stores the result in *dest if present; returns 0 otherwise. */
-static int read_an_int(int *dest, toml_table_t *values, const char *key)
+__attribute__((nonnull)) static int read_an_int(int *dest, toml_table_t *values, const char *key)
 {
   toml_datum_t value = toml_int_in(values, key);
   if (value.ok) {
@@ -367,7 +367,8 @@ static int read_an_int(int *dest, toml_table_t *values, const char *key)
 
 /* Read a `double` from the `values` table.
  * Returns 1 and stores the result in *dest when successful, 0 otherwise. */
-static int read_a_double(double *dest, toml_table_t *values, const char *key)
+__attribute__((nonnull)) static int read_a_double(double *dest, toml_table_t *values,
+                                                  const char *key)
 {
   toml_datum_t value = toml_double_in(values, key);
   if (value.ok) {
@@ -381,7 +382,8 @@ static int read_a_double(double *dest, toml_table_t *values, const char *key)
 /* Reads a string (char *) from the table `values`.
  * Returns 1 and stores the result in *dest if successful, 0 otherwise.
  * `*dest` needs to be freed. */
-static int read_a_string(const char **dest, toml_table_t *values, const char *key)
+__attribute__((nonnull)) static int read_a_string(const char **dest, toml_table_t *values,
+                                                  const char *key)
 {
   toml_datum_t ext = toml_string_in(values, key);  // mem:timetaker
   if (ext.ok) {
@@ -645,7 +647,7 @@ static int try_parse_file(Builder *C, char *filename, FILE *log)
 
   // options:
   // TODO: reconcile verbosity from command line and configs
-  read_a_bool(&C->options.verbose, t, "verbose");
+  read_a_bool(&C->options.spice_verbose, t, "verbose");
   read_an_int(&C->options.max_subprocesses, t, "max_subprocesses");
   assert(C->options.max_subprocesses >= 0);  // 0 means unlimited, negative is illegal
   read_an_int(&C->options.threads, t, "threads");
@@ -790,6 +792,28 @@ static void most_specific_filename(char *filename, const char *extension, const 
   free(temp);         // mem:tautonymic
 }
 
+/* Move data from the builder into the configuration. */
+void build_configuration(Configuration *C, Builder *B)
+{
+  C->function = B->function;
+  C->command = B->command;
+  C->log = B->log;
+  C->file_names = B->file_names;
+  C->options = B->options;
+  C->extensions = B->extensions;
+  // drop default node & parameter data
+  node_drop(&B->node_defaults);
+  param_drop(&B->param_defaults);
+  C->num_nodes = B->num_nodes;
+  C->nodes = B->nodes;
+  C->num_params_all = B->num_params_all;
+  C->params = B->params;
+  C->num_2D = B->num_2D;
+  C->_2D = B->_2D;
+  // remove excluded params from the running (initializing num_params_corn and num_params)
+  exclude_params_corn(C);
+}
+
 /* Finds and parses all applicable configuration files.
  *
  * There are two kinds of configuration files that may apply:
@@ -885,25 +909,8 @@ Configuration *Configure(const Args *args, FILE *log)
   }
   free(filename_temp);
 
-  // move data from builder to configuration
-  Configuration *C = malloc(sizeof *C);  // mem:circumgyrate
-  C->function = B.function;
-  C->command = B.command;
-  C->file_names = B.file_names;
-  C->options = B.options;
-  C->extensions = B.extensions;
-  C->log = B.log;
-  // drop default node & parameter data
-  node_drop((Node *)&B.node_defaults);
-  param_drop(&B.param_defaults);
-  C->num_nodes = B.num_nodes;
-  C->nodes = B.nodes;
-  C->num_params_all = B.num_params_all;
-  C->params = B.params;
-  C->num_2D = B.num_2D;
-  C->_2D = B._2D;
-  // remove excluded params from the running (initializing num_params_corn and num_params)
-  exclude_params_corn(C);
+  Configuration *cfg = malloc(sizeof *cfg);  // mem:circumgyrate
+  build_configuration(cfg, &B);
 
-  return C;
+  return cfg;
 }
