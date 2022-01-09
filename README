@@ -1,3 +1,21 @@
-to compile it:
-$ cmake .
+
+malt-3.1.0 released 01/09/2022
+
+* The Yield command has been installed.
+
+* New top-level build command (see below).  This generates output files
+  only in ./build instead of within the source files.
+
+To build malt, from the top directory (contains this README) give the command:
 $ make
+
+The malt executable produced is ./build/malt.
+
+To rebuild malt, you can give the same command from the top level or
+from ./build.
+$ make
+
+To reset everything, give this command at the top level.  This simply
+deletes the build directory.
+$ make clean
+

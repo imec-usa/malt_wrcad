@@ -9,7 +9,7 @@ void strchrcat(char *, int);
 char *resprintf(char **restrict strp, const char *fmt, ...);
 void lprintf(const Configuration *, const char *, ...);
 
-#define MALTUSAGE "malt [-h] {-d|-m|-t|-2|-o} <circuit_name>[.<ext_1>[.<ext_2>[...]]]\n"
+#define MALTUSAGE "malt [-h] {-d|-m|-t|-2|-y|-o} <circuit_name>[.<ext_1>[.<ext_2>[...]]]\n"
 #define MALTHELP \
 "MALT 3.0\n" \
 "  Parametric yield optimization utility for use with WRSpice\n" \
@@ -21,6 +21,7 @@ void lprintf(const Configuration *, const char *, ...);
 "  -m\tCalculate individual parameter margins\n" \
 "  -t\tTrace nodes at marginal parameter values\n" \
 "  -2\tCalculate operating region in 2 dimensions\n" \
+"  -y\tCalculate circuit yield using corner analysis\n" \
 "  -o\tOptimize yield using inscribed hyperspheres\n" \
 "CIRCUIT NAME\n" \
 "  Used to find the .config, .cir, .param, .passf, and .envelope files\n" \

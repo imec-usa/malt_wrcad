@@ -113,6 +113,17 @@ static void builder_debug(const Builder *B,FILE *fp){
   fprintf(fp,"\n***  Options for Margins  ***\n");
   fprintf(fp,"\n***  Options for 2D Margins  ***\n");
   fprintf(fp,"2D_iter = %d\n",B->options._2D_iter);
+  /* TODO not yet supported
+  fprintf(fp,"\n***  Options for 2D Shmoo  ***\n");
+  */
+  fprintf(fp,"\n***  Options for Corners Yield  ***\n");
+  fprintf(fp,"***  ranges: 0-10, 0-9, 1-40\n");
+  fprintf(fp,"y_search_depth = %d\n",B->options.y_search_depth);
+  fprintf(fp,"y_search_width  = %d\n",B->options.y_search_width);
+  fprintf(fp,"y_search_steps  = %d\n",B->options.y_search_steps);
+  fprintf(fp,"y_max_mem_k = %d\n",B->options.y_max_mem_k);
+  fprintf(fp,"y_accuracy = %g\n",B->options.y_accuracy);
+  fprintf(fp,"y_print_every = %d\n",B->options.y_print_every);
   fprintf(fp,"\n***  Options for Optimize  ***\n");
   fprintf(fp,"o_min_iter = %d\n",B->options.o_min_iter);
   fprintf(fp,"o_max_mem_k = %d\n",B->options.o_max_mem_k);
@@ -236,6 +247,14 @@ void builder_init(Builder *C){
   /* options for margins */
   /* options for 2D margins */
   C->options._2D_iter = 16;
+  /* TODO: options for 2D shmoo */
+  /* options for corners yield */
+  C->options.y_search_depth = 5;
+  C->options.y_search_width = 5;
+  C->options.y_search_steps = 12;
+  C->options.y_max_mem_k = 4194304;
+  C->options.y_accuracy = 10;
+  C->options.y_print_every = 0;
   /* options for optimize */
   C->options.o_min_iter = 100;
   C->options.o_max_mem_k = 4194304;
@@ -457,10 +476,7 @@ int compositLine(Builder *C, ConfigLine *L){
             !strcmp(C->_2D[this_num].name_y, C->_2D[j].name_x))){
           --C->num_2D;
           break;}}
-/* SRW start */
-    } else if(!strcasecmp(L->key[i],"param_y")){
-      return C->num_2D;
-/* SRW end */
+      return C->num_2D;  /* added by SRW 01/09/2022 */
     }
   }
   fprintf(stderr, "malt: Internal error at %s:%d\n", __FILE__, __LINE__);
@@ -507,6 +523,19 @@ int simpleLine(Builder *C, ConfigLine *L){
   /* options for 2D margins */
   else if(!strcasecmp(L->key[0],"2D_iter"))
         C->options._2D_iter = atoi(L->value[0]);
+  /* options for corners yield */
+  else if(!strcasecmp(L->key[0],"y_search_depth"))
+        C->options.y_search_depth = atoi(L->value[0]);
+  else if(!strcasecmp(L->key[0],"y_search_width"))
+        C->options.y_search_width = atoi(L->value[0]);
+  else if(!strcasecmp(L->key[0],"y_search_steps"))
+        C->options.y_search_steps = atoi(L->value[0]);
+  else if(!strcasecmp(L->key[0],"y_max_mem_k"))
+        C->options.y_max_mem_k = atoi(L->value[0]);
+  else if(!strcasecmp(L->key[0],"y_accuracy"))
+        C->options.y_accuracy = atof(L->value[0]);
+  else if(!strcasecmp(L->key[0],"y_print_every"))
+        C->options.y_print_every = atoi(L->value[0]);
   /* options for optimize */
   else if(!strcasecmp(L->key[0],"o_min_iter"))
         C->options.o_min_iter = atoi(L->value[0]);

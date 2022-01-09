@@ -3,6 +3,7 @@
 #include "config.h"
 #include "define.h"
 #include "margins.h"
+#include "corners.h"
 #include "optimize.h"
 #include <assert.h>
 #include <stdarg.h>
@@ -66,6 +67,7 @@ int main(int argc, char *argv[])
             (function == '2')?"# ":"",C->extensions.envelope,
             (*C->file_names.envelope != '\0')?C->file_names.envelope:"Not Found");
   }
+  /* *** need to check if you can use only the passf file, because you still have to save your vectors *** */
   /* does either the .envelope or .passf file exist? */
   if(*C->file_names.envelope == '\0' && *C->file_names.passf == '\0' && function != 'd') {
     fprintf(stderr,
@@ -89,6 +91,9 @@ int main(int argc, char *argv[])
     break;
   case 's':
     if (!shmoo(C))  fprintf(stderr,"2D Shmoo routine exited on an error\n");
+    break;
+  case 'y':
+    if (!marg_corners(C))  fprintf(stderr,"Yield routine exited on an error\n");
     break;
   case 'o':
     if (!call_opt(C))  fprintf(stderr,"Optimize routine exited on an error\n");
@@ -117,7 +122,7 @@ void read_command_line(int argc, char *argv[], int *function, char **command_nam
     case 'h':
       fprintf(stderr, "%s", MALTHELP);
       exit(EXIT_SUCCESS);
-    case 'd': case 'm': case 't': case '2': case 's': case 'o':
+    case 'd': case 'm': case 't': case '2': case 's': case 'y': case 'o':
       if (have_function) {
         /* only one function is allowed per command line */
         usage();
