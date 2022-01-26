@@ -21,51 +21,42 @@ int main(int argc, char *argv[])
   /* parse command line */
   read_command_line(&args, argc, argv);
 
-  /* create output file */
-  char *log_file_name =
-      resprintf(NULL, "%s.%c", args.circuit_name, args.function);  // mem:suasively
-  FILE *log = fopen(log_file_name, "w");
+  /* create temporary log file */
+  FILE *log = tmpfile();
   if (log == NULL) {
-    char *err = resprintf(NULL, "malt: Can't open '%s' for writing", log_file_name);
+    char *err = resprintf(NULL, "malt: Can't open a temporary log file");
     perror(err);
     exit(EXIT_FAILURE);
   }
-  free(log_file_name);  // mem:suasively
 
   /* find and parse the cascade of .toml configuration files */
   Configuration *C = Configure(&args, log);
 
+  // TODO: resolve filenames properly, instead of changing directory here, which might be confusing
+  chdir(lst_last(&C->working_tree));
+
   /* .cir */
-  lprintf(C, "%sThe %s file: %s\n", (args.function == '2') ? "# " : "", C->extensions.circuit,
-          (*C->file_names.circuit != '\0') ? C->file_names.circuit : "Not Found");
-  /* does the .cir file exist? */
-  if (*C->file_names.circuit == '\0') {
-    fprintf(stderr, "The %s file is the spice deck and is required\n", C->extensions.circuit);
-    exit(EXIT_FAILURE);
+  if (C->file_names.circuit != NULL) {
+    info("SPICE (%s) file: '%s'\n", C->extensions.circuit, C->file_names.circuit);
+  } else {
+    error("The %s file is the SPICE deck and is required\n", C->extensions.circuit);
   }
-  /* .param */
-  if (*C->file_names.param != '\0')
-    lprintf(C, "%sThe %s file: %s\n", (args.function == '2') ? "# " : "", C->extensions.param,
-            C->file_names.param);
-  /* .passf */
-  if (*C->file_names.passf != '\0')
-    lprintf(C, "%sThe %s file: %s\n", (args.function == '2') ? "# " : "", C->extensions.passf,
-            C->file_names.passf);
-  /* .envelope */
-  if (args.function != 'd') {
-    lprintf(C, "%sThe %s file: %s\n", (args.function == '2') ? "# " : "", C->extensions.envelope,
-            (*C->file_names.envelope != '\0') ? C->file_names.envelope : "Not Found");
+
+  /* parameters */
+  if (C->file_names.param != NULL) {
+    info("Parameters file: '%s'\n", C->file_names.param);
   }
-  /* *** need to check if you can use only the passf file, because you still have to save your
-   * vectors *** */
-  /* does either the .envelope or .passf file exist? */
-  if (*C->file_names.envelope == '\0' && *C->file_names.passf == '\0' && args.function != 'd') {
-    fprintf(
-        stderr,
-        "The %s file and %s file defines correct circuit operation. One or the other is required\n",
-        C->extensions.envelope, C->extensions.passf);
-    exit(EXIT_FAILURE);
+
+  /* passfail or envelope */
+  if (C->file_names.passf != NULL) {
+    info("Pass/fail file: '%s'\n", C->file_names.passf);
+  } else if (C->file_names.envelope != NULL) {
+    info("Envelope file: '%s'\n", C->file_names.envelope);
+  } else if (args.function != 'd') {
+    // if neither the .envelope or .passf file exists, only -d makes sense
+    error("Cannot find an envelope or passfail file. Try running -d first?\n");
   }
+
   /* call the appropriate algorithm */
   switch (args.function) {
   case 'd':
@@ -97,8 +88,7 @@ int main(int argc, char *argv[])
       fprintf(stderr, "Optimize routine exited on an error\n");
     break;
   }
-  fclose(log);
-  free(args.circuit_name);  // mem:mobster
+  free(args.configuration);  // mem:mobster
   freeConfiguration(C);
 }
 
@@ -152,7 +142,7 @@ void read_command_line(Args *args, int argc, char *argv[])
 
   if (optind + 1 == argc) {
     /* we have a circuit name */
-    args->circuit_name = strdup(argv[optind]);  // mem:mobster
+    args->configuration = strdup(argv[optind]);  // mem:mobster
   } else {
     usage();
   }

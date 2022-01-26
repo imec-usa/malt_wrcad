@@ -1,12 +1,14 @@
 // vi: ts=2 sts=2 sw=2 et tw=100
 /* parse configuraton files */
 
-// TODO
-// - Keep track of initialized status of fields in Builder, don't print the uninitialized ones
-// (print examples instead)
+// TODO:
+// - Keep track of initialized status of fields in Builder, don't print the uninitialized ones by
+// value (print examples instead)
 // - implement units field for dt and dx
+// - separate [corners]
 
 #include "config.h"
+#include "list.h"
 #include "malt.h"
 #include "toml.h"
 #include <assert.h>
@@ -16,6 +18,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h> /* for strcasecmp */
+#include <sys/stat.h>
 #include <unistd.h>
 
 static const Param PARAM_DEFAULT = {
@@ -37,8 +40,10 @@ static const Param PARAM_DEFAULT = {
 
 typedef struct builder {
   int function;
-  char *command;
   FILE *log;
+
+  list_t project_tree;
+  list_t working_tree;
 
   struct file_names file_names;
 
@@ -46,6 +51,7 @@ typedef struct builder {
 
   struct options options;
 
+  bool has_envelope;
   Node node_defaults;
 
   int num_nodes;
@@ -81,7 +87,6 @@ static void builder_debug(const Builder *B, FILE *fp)
   comment("(These options must precede any [section] in this file)");
   key_val("binsearch_accuracy", "%g  # fraction of sigma", B->options.binsearch_accuracy);
   key_val("max_subprocesses", "%d", B->options.max_subprocesses);
-  key_val("threads", "%d", B->options.threads);
   key_val("print_terminal", "%s", B->options.print_terminal ? "true" : "false");
   // TODO: factor spice_call_name and spice_verbose into "simulator options"
   key_val("spice_call_name", "'%s'", B->options.spice_call_name);
@@ -166,6 +171,8 @@ static void builder_debug(const Builder *B, FILE *fp)
     key_val("passfail", "'%s'", B->extensions.passf);
   if (B->extensions.envelope)
     key_val("envelope", "'%s'", B->extensions.envelope);
+  if (B->extensions.env_call)
+    key_val("env_call", "'%s'", B->extensions.env_call);
   if (B->extensions.plot)
     key_val("plot", "'%s'", B->extensions.plot);
 
@@ -225,7 +232,6 @@ void freeConfiguration(Configuration *C)
   free(C->file_names.param);                 // mem:stairwork
   free(C->file_names.passf);                 // mem:toners
   free(C->file_names.envelope);              // mem:cool
-  free(C->file_names.config);                // mem:synurae
   free(C->file_names.env_call);              // mem:semishady
   free(C->file_names.plot);                  // mem:federalizes
   free(C->file_names.iter);                  // mem:myrcene
@@ -233,9 +239,7 @@ void freeConfiguration(Configuration *C)
   free(C->extensions.which_trace);           // mem:intratubal
   free((void *)C->options.spice_call_name);  // mem:descendentalism
 
-  /* FIXME: add this part when we can guarantee log has been opened ~ntj
   fclose(C->log);
-  */
 
   for (int n = 0; n < C->num_nodes; ++n) {
     node_drop((Node *)&C->nodes[n]);
@@ -259,15 +263,16 @@ static void builder_init(Builder *C, const Args *args, FILE *log)
 {
   // the following fields are always initialized so that they are available for debugging:
   C->function = args->function;
-  C->command = args->circuit_name;
   C->log = log;
   /* initialize everything to internal defaults */
+  C->has_envelope = false;
+  C->project_tree = EMPTY_LIST;
+  C->working_tree = EMPTY_LIST;
   /* internal file names */
   C->file_names.circuit = NULL;
   C->file_names.param = NULL;
   C->file_names.passf = NULL;
   C->file_names.envelope = NULL;
-  C->file_names.config = NULL;
   C->file_names.env_call = NULL;
   C->file_names.plot = NULL;
   C->file_names.iter = NULL;
@@ -289,7 +294,7 @@ static void builder_init(Builder *C, const Args *args, FILE *log)
   C->extensions.param = ".param";
   C->extensions.passf = ".passf";
   C->extensions.envelope = ".envelope";
-  C->extensions.config = ".toml";
+  C->extensions.env_call = ".env_call";
   C->extensions.plot = ".plot";
   /* pretty weak */
   C->extensions.which_trace = malloc(LINE_LENGTH);  // mem:intratubal
@@ -297,7 +302,6 @@ static void builder_init(Builder *C, const Args *args, FILE *log)
   C->options.binsearch_accuracy = 0.1;
   C->options.spice_call_name = strdup("wrspice");  // mem:descendentalism
   C->options.spice_verbose = 0;
-  C->options.threads = 16;          // default # threads: 16
   C->options.max_subprocesses = 0;  // default # jobs: unlimited
   C->options.print_terminal = 1;
   /* options for define */
@@ -383,7 +387,6 @@ static int read_envelope(Builder *C, toml_table_t *t)
   // read [envelope] table (NOTE: must be done before nodes)
   toml_table_t *envelope = toml_table_in(t, "envelope");
   if (envelope) {
-    // TODO: parse units?
     return read_a_double(&C->node_defaults.dx, envelope, "dx") &&
            read_a_double(&C->node_defaults.dt, envelope, "dt");
   } else {
@@ -397,11 +400,11 @@ static int read_envelope(Builder *C, toml_table_t *t)
 static int read_nodes(Builder *C, toml_table_t *t)
 {
   int len_nodes = 0;
-  int has_envelope = read_envelope(C, t);
+  C->has_envelope |= read_envelope(C, t);
   toml_array_t *nodes = toml_array_in(t, "nodes");
   if (nodes) {
     // nodes are present: [envelope] must be too, for defaults
-    if (!has_envelope) {
+    if (!C->has_envelope) {
       error("Missing [envelope] in TOML file containing nodes list\n");
     }
     len_nodes = toml_array_nelem(nodes);
@@ -435,78 +438,94 @@ static int read_nodes(Builder *C, toml_table_t *t)
   return len_nodes;
 }
 
+static int read_parameters_table(Builder *C, toml_table_t *parameters)
+{
+  // loop over the table entries
+  int i;
+  for (i = 0;; ++i) {
+    const char *parameter = toml_key_in(parameters, i);
+    if (!parameter)
+      break;
+
+    // does this parameter already exist?
+    bool match = false;
+    int n;
+    for (n = 0; n < C->num_params_all; ++n) {
+      if (!strcmp(C->params[n].name, parameter)) {
+        match = true;
+        break;
+      }
+    }
+    if (!match) {
+      // grow C->params by 1 (slow but whatever)
+      C->params = realloc(C->params, (++C->num_params_all) * sizeof *C->params);  // mem:restringer
+      C->params[n] = PARAM_DEFAULT;
+    }
+
+    // populate/overwrite C->params[n] with the contents of `values`
+    // parameter name:
+    C->params[n].name = strdup(parameter);  // mem:reminiscer
+
+    // nominal-only parameters are simply numeric, and never included in analysis
+    toml_datum_t nominal = toml_double_in(parameters, parameter);
+    if (nominal.ok) {
+      C->params[n].nominal = nominal.u.d;
+      C->params[n].include = false;
+      // make maltspace happy
+      C->params[n].logs = false;
+      C->params[n].sigabs = 1.0;
+      continue;
+    }
+
+    // included parameters
+    toml_table_t *values = toml_table_in(parameters, parameter);
+    if (!values) {
+      error("[parameters.%s] is not a table\n", parameter);
+    }
+
+    // nominal (required):
+    if (!read_a_double(&C->params[n].nominal, values, "nominal")) {
+      error("Parameter '%s' has no nominal value\n", parameter);
+    }
+
+    // min, max:
+    C->params[n].top_min |= read_a_double(&C->params[n].min, values, "min");
+    C->params[n].top_max |= read_a_double(&C->params[n].max, values, "max");
+
+    // nom_min, nom_max:
+    C->params[n].isnommin |= read_a_double(&C->params[n].nom_min, values, "nom_min");
+    C->params[n].isnommax |= read_a_double(&C->params[n].nom_max, values, "nom_max");
+
+    // various flags:
+    read_a_bool(&C->params[n].staticc, values, "static");
+    read_a_bool(&C->params[n].include, values, "include");
+    read_a_bool(&C->params[n].logs, values, "logs");
+    read_a_bool(&C->params[n].corners, values, "corners");
+
+    // sigma, sigabs (exactly 1 required for included parameters):
+    // TODO: parse a subtable {percent = 5} or whatever
+    toml_datum_t sigma = toml_double_in(values, "sigma");
+    toml_datum_t sigabs = toml_double_in(values, "sig_abs");
+    if (sigma.ok && !sigabs.ok) {
+      C->params[n].sigma = sigma.u.d;
+    } else if (sigabs.ok && !sigma.ok) {
+      C->params[n].sigabs = sigabs.u.d;
+    } else if (C->params[n].include) {
+      error("Parameter '%s' must have exactly one of sigma or sig_abs\n", parameter);
+      return 0;
+    }
+  }
+  return i;
+}
+
 /* Read the [parameters] table from the TOML file, if present.
  * Returns the number of parameters successfully read.  */
 static int read_parameters(Builder *C, toml_table_t *t)
 {
   toml_table_t *parameters = toml_table_in(t, "parameters");
   if (parameters) {
-    // loop over the table entries
-    int i;
-    for (i = 0;; ++i) {
-      const char *parameter = toml_key_in(parameters, i);
-      if (!parameter)
-        break;
-      toml_table_t *values = toml_table_in(parameters, parameter);
-      if (!values) {
-        error("[parameters.%s] is not a table\n", parameter);
-      }
-
-      // does this parameter already exist?
-      bool match = false;
-      int n;
-      for (n = 0; n < C->num_params_all; ++n) {
-        if (!strcmp(C->params[n].name, parameter)) {
-          match = true;
-          break;
-        }
-      }
-      if (!match) {
-        // grow C->params by 1 (slow but whatever)
-        C->params =
-            realloc(C->params, (++C->num_params_all) * sizeof *C->params);  // mem:restringer
-        C->params[n] = PARAM_DEFAULT;
-      }
-
-      // populate/overwrite C->params[n] with the contents of `values`
-      // parameter name:
-      C->params[n].name = strdup(parameter);  // mem:reminiscer
-
-      // nominal (required field):
-      if (!read_a_double(&C->params[n].nominal, values, "nominal")) {
-        error("Parameter '%s' has no nominal value\n", parameter);
-      }
-
-      // sigma, sigabs:
-      // TODO: parse a subtable {percent = 5} or whatever
-      toml_datum_t sigma = toml_double_in(values, "sigma");
-      toml_datum_t sigabs = toml_double_in(values, "sig_abs");
-      if (sigma.ok && !sigabs.ok) {
-        C->params[n].sigma = sigma.u.d;
-      } else if (sigabs.ok && !sigma.ok) {
-        C->params[n].sigabs = sigabs.u.d;
-      } else {
-        error("Parameter '%s' must have exactly one of sigma or sig_abs\n", parameter);
-        return 0;
-      }
-
-      // min, max:
-      C->params[n].top_min |= read_a_double(&C->params[n].min, values, "min");
-      C->params[n].top_max |= read_a_double(&C->params[n].max, values, "max");
-
-      // nom_min, nom_max:
-      C->params[n].isnommin |= read_a_double(&C->params[n].nom_min, values, "nom_min");
-      C->params[n].isnommax |= read_a_double(&C->params[n].nom_max, values, "nom_max");
-
-      // various flags:
-      read_a_bool(&C->params[n].staticc, values, "static");
-      read_a_bool(&C->params[n].include, values, "include");
-      read_a_bool(&C->params[n].logs, values, "logs");
-      read_a_bool(&C->params[n].corners, values, "corners");
-    }
-    return i;
+    read_parameters_table(C, parameters);
   }
-  info("No [parameters] in config file\n");
   return 0;
 }
 
@@ -517,11 +536,12 @@ static int read_extensions(Builder *C, toml_table_t *t)
   toml_table_t *extensions = toml_table_in(t, "extensions");
   int n = 0;
   if (extensions) {
-    n += read_a_string(&C->extensions.circuit, extensions, "circuit");    // mem:timetaker
-    n += read_a_string(&C->extensions.param, extensions, "parameters");   // mem:rupa
-    n += read_a_string(&C->extensions.passf, extensions, "passfail");     // mem:essentia
-    n += read_a_string(&C->extensions.envelope, extensions, "envelope");  // mem:trinkle
-    n += read_a_string(&C->extensions.plot, extensions, "plot");          // mem:irrepairable
+    n += read_a_string(&C->extensions.circuit, extensions, "circuit");  // mem:timetaker
+    n += read_a_string(&C->extensions.plot, extensions, "plot");        // mem:irrepairable
+    n += read_a_string(&C->extensions.param, extensions, "parameters");
+    n += read_a_string(&C->extensions.passf, extensions, "passfail");
+    n += read_a_string(&C->extensions.envelope, extensions, "envelope");
+    n += read_a_string(&C->extensions.env_call, extensions, "env_call");
   }
   return n;
 }
@@ -532,8 +552,10 @@ static int read_define_opts(Builder *C, toml_table_t *t)
 {
   toml_table_t *define = toml_table_in(t, "define");
   int n = 0;
-  n += read_a_bool(&C->options.d_simulate, define, "simulate");
-  n += read_a_bool(&C->options.d_envelope, define, "envelope");
+  if (define) {
+    n += read_a_bool(&C->options.d_simulate, define, "simulate");
+    n += read_a_bool(&C->options.d_envelope, define, "envelope");
+  }
   return n;
 }
 
@@ -543,15 +565,17 @@ static int read_yield_opts(Builder *C, toml_table_t *t)
 {
   toml_table_t *yield = toml_table_in(t, "yield");
   int n = 0;
-  n += read_an_int(&C->options.y_search_depth, yield, "search_depth");
-  n += read_an_int(&C->options.y_search_width, yield, "search_width");
-  n += read_an_int(&C->options.y_search_steps, yield, "search_steps");
-  // TODO: parse a subtable {k: 4194304} or something instead of units in the name (also in
-  // optimize)
-  n += read_an_int(&C->options.y_max_mem_k, yield, "max_mem_k");
-  n += read_a_double(&C->options.y_accuracy, yield, "accuracy");
-  // TODO: check that print_every is working optimally
-  n += read_an_int(&C->options.y_print_every, yield, "print_every");
+  if (yield) {
+    n += read_an_int(&C->options.y_search_depth, yield, "search_depth");
+    n += read_an_int(&C->options.y_search_width, yield, "search_width");
+    n += read_an_int(&C->options.y_search_steps, yield, "search_steps");
+    // TODO: parse a subtable {k: 4194304} or something instead of units in the name (also in
+    // optimize)
+    n += read_an_int(&C->options.y_max_mem_k, yield, "max_mem_k");
+    n += read_a_double(&C->options.y_accuracy, yield, "accuracy");
+    // TODO: check that print_every is working optimally
+    n += read_an_int(&C->options.y_print_every, yield, "print_every");
+  }
   return n;
 }
 
@@ -561,8 +585,10 @@ static int read_optimize_opts(Builder *C, toml_table_t *t)
 {
   toml_table_t *optimize = toml_table_in(t, "optimize");
   int n = 0;
-  n += read_an_int(&C->options.o_min_iter, optimize, "min_iter");
-  n += read_an_int(&C->options.o_min_iter, optimize, "max_mem_k");
+  if (optimize) {
+    n += read_an_int(&C->options.o_min_iter, optimize, "min_iter");
+    n += read_an_int(&C->options.o_min_iter, optimize, "max_mem_k");
+  }
   return n;
 }
 
@@ -608,7 +634,7 @@ static int read_xy_sweeps(Builder *C, toml_table_t *t)
 
 /* If there is a file at *filename, open and parse it.
  * Returns 1 if the file was successfully parsed, 0 if the file does not exist; aborts otherwise. */
-static int try_parse_file(Builder *C, char *filename)
+static int try_parse_configuration(Builder *C, char *filename)
 {
   FILE *fp = fopen(filename, "r");
 
@@ -628,8 +654,6 @@ static int try_parse_file(Builder *C, char *filename)
   read_a_bool(&C->options.spice_verbose, t, "verbose");
   read_an_int(&C->options.max_subprocesses, t, "max_subprocesses");
   assert(C->options.max_subprocesses >= 0);  // 0 means unlimited, negative is illegal
-  read_an_int(&C->options.threads, t, "threads");
-  assert(C->options.threads > 0);  // number of threads must be at least 1
   // TODO: check that print_terminal is working as intended
   read_a_bool(&C->options.print_terminal, t, "print_terminal");
   read_a_double(&C->options.binsearch_accuracy, t, "binsearch_accuracy");
@@ -651,51 +675,23 @@ static int try_parse_file(Builder *C, char *filename)
   return 1;
 }
 
-/* List paths that are candidates for having a Malt.toml in the current directory (`path`) and all
- * parent directories up to either / or the user's $HOME.
- *
- * Sets `*listp` to an array of pointers to paths. Returns the number of paths. Both the array and
- * the individual paths need to be freed.  */
-static int config_file_candidates(char ***listp, char *path)
+static int try_parse_parameters(Builder *C, char *filename)
 {
-  const char *home = getenv("HOME");
-  int len = 0, cap = 10;
-  if (listp != NULL) {
-    *listp = malloc(cap * sizeof **listp);  // mem:nonaddicted
+  FILE *fp = fopen(filename, "r");
+
+  if (!fp) {
+    return 0;
   }
 
-  char *sptr = &path[strlen(path)];
-
-  while (sptr) {
-    // walk sptr backwards to the first in any run of separators (e.g. "/////")
-    while (sptr > path && sptr[-1] == '/') {
-      --sptr;
-    }
-    // truncate path to the last '/'
-    *sptr = '\0';
-
-    if (listp != NULL) {
-      // reallocate if necessary
-      if (len == cap) {
-        cap += cap / 2;
-        *listp = realloc(*listp, cap * sizeof **listp);  // mem:nonaddicted
-        assert(*listp);
-      }
-
-      // add path/Malt.toml to the candidate list
-      (*listp)[len] = resprintf(NULL, "%s/Malt.toml", path);  // mem:hypophloeodal
-      ++len;
-    }
-
-    // if at $HOME, stop
-    if ((home != NULL) && (strcmp(home, path) == 0)) {
-      break;
-    }
-
-    // move sptr back to the last occurrence of '/'
-    sptr = strrchr(path, '/');
+  char errbuf[200];
+  toml_table_t *t = toml_parse_file(fp, errbuf, sizeof errbuf);
+  fclose(fp);
+  if (!t) {
+    error("Cannot parse TOML: %s\n", errbuf);
   }
-  return len;
+
+  read_parameters_table(C, t);
+  return 1;
 }
 
 /* Reorders `C->params` so that its elements appear in this order:
@@ -742,40 +738,123 @@ static void exclude_params_corn(Configuration *C)
 #undef include_now
 }
 
-/* Finds the longest filename that starts with `prefix`, ends with `extension`, and refers to a
- * file that exists. Stores the result in `*filename`.  */
-static void most_specific_filename(char *filename, const char *extension, const char *prefix)
+/* Checks whether or not a file exists and is a regular file. */
+static bool file_exists(const char *path)
 {
-  char *file_prefix = strdup(prefix);  // mem:watchless
-  char *temp = NULL;
-  for (;;) {
-    resprintf(&temp, "%s%s", file_prefix, extension);  // mem:tautonymic
-    FILE *fd;
-    if ((fd = fopen(temp, "r"))) {
-      strcpy(filename, temp);
-      fclose(fd);
-      break;
-    } else {
-      char *last_dot = strrchr(file_prefix, '.');
-      if (last_dot == NULL) {
-        /* TODO: figure out what happens if this is never fixed */
-        filename[0] = '\0';
-        break;
-      } else {
-        *last_dot = '\0';
-      }
+  struct stat s;
+  return stat(path, &s) == 0 && S_ISREG(s.st_mode);
+}
+
+/* Finds the most specific file with the extension `ext` prefixed by any element of `tree`.
+ *
+ * Returns NULL if no such file exists.
+ */
+static char *most_specific_with_ext(const list_t *tree, const char *ext)
+{
+  char *path = NULL;
+  for (int i = tree->len; i-- > 0;) {
+    // check path/to/foo.ext
+    resprintf(&path, "%s%s", tree->ptr[i], ext);
+    if (file_exists(path)) {
+      return path;
+    }
+    // check path/to/foo/the.ext
+    resprintf(&path, "%s/the%s", tree->ptr[i], ext);
+    if (file_exists(path)) {
+      return path;
     }
   }
-  free(file_prefix);  // mem:watchless
-  free(temp);         // mem:tautonymic
+  free(path);
+  return NULL;
+}
+
+static const char *file_extension_by_type(const struct extensions *e, enum filetype ftype)
+{
+  switch (ftype) {
+  case Ft_Circuit:
+    return e->circuit;
+  case Ft_Parameters:
+    return e->param;
+  case Ft_PassFail:
+    return e->passf;
+  case Ft_Envelope:
+    return e->envelope;
+  case Ft_EnvCall:
+    return e->env_call;
+  case Ft_Plot:
+    return e->plot;
+  default:
+    fprintf(stderr, "Internal error (%d is not a file type)", ftype);
+    exit(EXIT_FAILURE);
+  }
+}
+
+/* Creates a NEW file of `ftype` in the immediate working directory, setting the appropriate entry
+ * in C->file_types.
+ *
+ * Returns a pointer to the opened FILE, or aborts if fopen fails. */
+FILE *new_file_by_type(Configuration *C, enum filetype ftype)
+{
+  const char *ext = file_extension_by_type(&C->extensions, ftype);
+
+  char **filename;
+  switch (ftype) {
+  case Ft_Circuit:
+    filename = &C->file_names.circuit;
+    break;
+  case Ft_Parameters:
+    filename = &C->file_names.param;
+    break;
+  case Ft_PassFail:
+    filename = &C->file_names.passf;
+    break;
+  case Ft_Envelope:
+    filename = &C->file_names.envelope;
+    break;
+  case Ft_EnvCall:
+    filename = &C->file_names.env_call;
+    break;
+  case Ft_Plot:
+    filename = &C->file_names.plot;
+    break;
+  default:
+    error("Internal error (%d is not a file type)", ftype);
+  }
+
+  // set the new filename, clobbering what was in file_names (if any)
+  char *cwd = getcwd(NULL, 0);
+  resprintf(filename, "%s/the%s", cwd, ext);
+  free(cwd);
+
+  // open the file for writing
+  FILE *ptr = fopen(*filename, "w");
+  if (ptr == NULL) {
+    error("Can not open the %s file '%s'\n", ext, *filename);
+  }
+  return ptr;
+}
+
+/* Finds the most specific EXISTING file of `ftype` in either the project tree or the working tree,
+ * returning its name or NULL if no such file exists.
+ */
+static char *find_file_by_type(const Builder *C, enum filetype ftype)
+{
+  const char *ext = file_extension_by_type(&C->extensions, ftype);
+  char *path = most_specific_with_ext(&C->project_tree, ext);
+  if (path == NULL) {
+    path = most_specific_with_ext(&C->working_tree, ext);
+  }
+  return path;
 }
 
 /* Move data from the builder into the configuration. */
 void build_configuration(Configuration *C, Builder *B)
 {
   C->function = B->function;
-  C->command = B->command;
+  C->command = "";
   C->log = B->log;
+  C->working_tree = B->working_tree;
+  lst_drop(&B->project_tree);
   C->file_names = B->file_names;
   C->options = B->options;
   C->extensions = B->extensions;
@@ -791,46 +870,168 @@ void build_configuration(Configuration *C, Builder *B)
   exclude_params_corn(C);
 }
 
+/* Walks up the directory tree to find the directory where Malt.toml is located, and parses it.
+ *
+ * If no Malt.toml file is found, returns an empty list. Otherwise, returns the list of directory
+ * names. Only the first entry is a valid path by itself; the rest are components that have to be
+ * joined together with / to make a valid path.
+ */
+static list_t configure_project_root(Builder *C)
+{
+  list_t tree = EMPTY_LIST;
+
+  char *current = getcwd(NULL, 0);  // mem:busybody
+  char *filename = NULL;
+  // in each path,
+  for (;;) {
+    // check if Malt.toml exists
+    resprintf(&filename, "%s/Malt.toml", current);  // mem:finicky
+    if (file_exists(filename)) {
+      info("Found Malt.toml in '%s'\n", current);
+      if (try_parse_configuration(C, filename)) {
+        info("Parsed '%s'\n", filename);
+      } else {
+        // this shouldn't happen
+        error("Failed to parse Malt.toml\n");
+      }
+      // add the current path to the list
+      lst_push(&tree, current);
+      // and reverse it to put it in correct order
+      lst_reverse(&tree);
+      goto found;
+    }
+    // if no Malt.toml, chop off the last component of the current path
+    char *last_sep = strrchr(current, '/');
+    *last_sep = '\0';
+    if (!last_sep || last_sep == current) {
+      // reached / without finding Malt.toml
+      break;
+    }
+    // add this component to the list
+    lst_push(&tree, strdup(last_sep + 1));  // mem:embrace
+  }
+  // Malt.toml not found: clean up temporary data
+  lst_drop(&tree);
+  free(current);  // mem:busybody
+found:
+  free(filename);  // mem:finicky
+  return tree;
+}
+
+static void configure_directory(Builder *C, const char *component)
+{
+  char *current = lst_last(&C->project_tree);
+  char *filename = NULL;
+  // in each directory try the next component .toml (if there is a next component)
+  if (component) {
+    resprintf(&filename, "%s/%s.toml", current, component);
+    if (try_parse_configuration(C, filename)) {
+      info("Parsed configuration: '%s'\n", filename);
+    }
+    lst_push(&C->project_tree, resprintf(NULL, "%s/%s", current, component));
+    char *current_work = lst_last(&C->working_tree);
+    char *next_work = resprintf(NULL, "%s/%s", current_work, component);
+    mkdir(next_work, 0777);
+    lst_push(&C->working_tree, next_work);
+  }
+
+  resprintf(&filename, "%s/parameters.toml", current);
+  if (try_parse_parameters(C, filename)) {
+    info("Parsed parameters: '%s'\n", filename);
+  }
+
+  free(filename);
+}
+
+/* Walks *down* the directory tree from the project root to the `target`, which is presumed to be
+ * relative to the current directory, parsing .toml files whose names correspond to the next
+ * component of the path. See `Configure` for more details.
+ *
+ * `ptree` should initially contain the path components of the project root, as if filled by
+ * `configure_project_root`.
+ */
+static void configure_target(Builder *C, list_t ptree, char *target)
+{
+  assert(ptree.len > 0);
+  char *project_root = ptree.ptr[0];
+
+  // initialize project_tree and working_tree
+  lst_push(&C->project_tree, strdup(project_root));
+  // TODO: read directory name from Malt.toml
+  char *working_root = resprintf(NULL, "%s/%s", project_root, "_malt");
+  mkdir(working_root, 0777);
+  lst_push(&C->working_tree, working_root);
+
+  // 1. traverse the directories already discovered by `configure_project_root`
+  for (size_t i = 1; i < ptree.len; ++i) {
+    char *component = ptree.ptr[i];
+    configure_directory(C, component);
+  }
+
+  // chop off the trailing .toml or .cir of *target, if present
+  char *ext = strrchr(target, '.');
+  if (ext != NULL && (strcmp(ext, ".toml") == 0 || strcmp(ext, C->extensions.circuit) == 0)) {
+    *ext = '\0';
+  }
+  if (target[0] == '/') {
+    error("Absolute path (%s) not allowed for target\n", target);
+  }
+
+  // 2. traverse into `target` one path component at a time
+  for (char *component = NULL, *etc = target; component != etc;) {
+    component = etc;
+    char *endp = strchr(etc, '/');
+    if (endp != NULL) {
+      *endp = '\0';
+      etc = endp + 1;
+    }
+    configure_directory(C, component);
+  }
+  // one last time for the final directory (no next component)
+  configure_directory(C, NULL);
+  lst_drop(&ptree);
+}
+
 /* Finds and parses all applicable configuration files.
  *
  * There are two kinds of configuration files that may apply:
- * - Malt.toml files, which may be found in the current directory or any parent up to the user's
- *   home directory or /. All of these files are parsed.
- * - Run-specific <circuit>.toml, where <circuit> is a dotted list of identifiers, which are found
- *   only in the current directory. Only the most specific file (longest prefix of
- *   args.circuit_name) is parsed.  (This is a bug.) */
+ * - Exactly one file named Malt.toml, which may be found in the current directory or any ancestor
+ *   up to the user's home directory or /.
+ * - Every <config>.toml where /path/to/<config> is a prefix of the configuration path named on the
+ *   command line, and inside the directory where Malt.toml is found.
+ *
+ * For instance, given the following directory structure:
+ *     project/
+ *     +- Malt.toml
+ *     +- circuitname.toml
+ *     +- circuitname/
+ *     |  +- corners.toml
+ *     |  +- corners/
+ *     |  |  +- 10.toml
+ *     |  |  +- 5.toml
+ *
+ * The command `malt -m circuitname/corners/10` (the .toml extension is optional) run inside the
+ * project directory will read in this order:
+ *   1. Malt.toml
+ *   2. circuitname.toml
+ *   3. circuitname/corners.toml
+ *   4. circuitname/corners/10.toml
+ */
 Configuration *Configure(const Args *args, FILE *log)
 {
-  FILE *fd, *fp;
-  int levels, files;
   Builder B;
   Builder *C = &B;  // so we can use info, warn, error macros which assume a pointer
 
   builder_init(&B, args, log);
 
-  if (args->verbosity > 0) {
-    info("Parsing the Malt.toml file "
-         "and the run-specific .toml file\n");
-  }
+  // 1. Find Malt.toml and parse that
+  list_t ptree = configure_project_root(&B);
 
-  char *cwd = getcwd(NULL, 0);
-  char **filelist = NULL;
-  files = config_file_candidates(&filelist, cwd);
-  free(cwd);
-
-  bool some = false;
-  for (levels = files - 1; levels >= 0; --levels) {
-    if (try_parse_file(&B, filelist[levels])) {
-      info("Parsed: '%s'\n", filelist[levels]);
-      some = true;
-    }
-    free(filelist[levels]);  // mem:hypophloeodal
-  }
-  free(filelist);  // mem:nonaddicted
-  if (!some) {
-    /* Trigger Configuration Setup */
+  // If Malt.toml is missing, helpfully create a new one in .
+  if (lst_empty(&ptree)) {
     warn("No Malt.toml configuration files found\n");
-    if ((fp = fopen("Malt.toml", "w")) != NULL) {
+    FILE *fp = fopen("Malt.toml", "w");
+    if (fp != NULL) {
       info("Generating a default configuration file './Malt.toml'\n");
     } else {
       error("Cannot open './Malt.toml' for writing\n");
@@ -838,50 +1039,51 @@ Configuration *Configure(const Args *args, FILE *log)
     builder_debug(&B, fp);
     fclose(fp);
   }
-  /* file_name memory allocation */
-  /* play it safe and simple */
-  size_t stringy = strlen(B.options.spice_call_name) + strlen(B.command) +
-                   strlen(B.extensions.circuit) + strlen(B.extensions.param) +
-                   strlen(B.extensions.passf) + strlen(B.extensions.envelope) +
-                   strlen(B.extensions.config) + strlen(B.extensions.plot) + 32;
-  B.file_names.circuit = malloc(stringy);   // mem:tectospondylous
-  B.file_names.param = malloc(stringy);     // mem:stairwork
-  B.file_names.passf = malloc(stringy);     // mem:toners
-  B.file_names.envelope = malloc(stringy);  // mem:cool
-  B.file_names.config = malloc(stringy);    // mem:synurae
-  B.file_names.env_call = malloc(stringy);  // mem:semishady
-  B.file_names.plot = malloc(stringy);      // mem:federalizes
-  B.file_names.iter = malloc(stringy);      // mem:myrcene
-  B.file_names.pname = malloc(stringy);     // mem:physnomy
-  /* the circuit, param, and envelope files we will be using */
-  /* determined from the command line */
 
-#define find_most_specific_filename(purpose) \
-  most_specific_filename(B.file_names.purpose, B.extensions.purpose, B.command)
-  find_most_specific_filename(circuit);
-  find_most_specific_filename(param);
-  find_most_specific_filename(envelope);
-  find_most_specific_filename(config);
-  find_most_specific_filename(passf);
-#undef find_most_specific_filename
+  // 2. Parse all other .toml files between project root and target
+  configure_target(&B, ptree, args->configuration);
 
-  /* parse the config file */
-  if (try_parse_file(&B, B.file_names.config)) {
-    info("Parsed '%s'\n", B.file_names.config);
-  }
-
-  /* write the final configuration to the final configuration file */
-  /* overwrite the file if it already exists */
-  char *filename_temp = NULL;
-  resprintf(&filename_temp, "%s%s.%c", B.command, B.extensions.config, B.function);
-  if ((fd = fopen(filename_temp, "w"))) {
-    builder_debug(&B, fd);
-    fclose(fd);
-    info("Configuration written to '%s'\n", filename_temp);
+  // 3. Redirect log output to the working directory
+  // (This is the earliest point we can do this because the working directory is not known
+  // before calling `configure_target`)
+  char *working_dir = lst_last(&B.working_tree);
+  char *logname = resprintf(NULL, "%s/%c.out", working_dir, B.function);
+  FILE *new = fopen(logname, "w");
+  if (new == NULL) {
+    warn("Cannot open file '%s'; log will be saved in a temporary file\n", logname);
   } else {
-    warn("Cannot open '%s' for writing\n", filename_temp);
+    // copy contents of the old temporary file into the new file
+    rewind(B.log);
+    for (;;) {
+      int c = fgetc(B.log);
+      if (c == EOF)
+        break;
+      fputc(c, new);
+    }
+    // and pull the old switcharoo
+    fclose(B.log);  // (should delete the temporary file)
+    B.log = new;
   }
-  free(filename_temp);
+  free(logname);
+
+  // 4. Find input filenames {circuit, param, envelope, passfail}
+  B.file_names.circuit = most_specific_with_ext(&B.project_tree, B.extensions.circuit);
+  B.file_names.param = find_file_by_type(&B, Ft_Parameters);
+  B.file_names.passf = find_file_by_type(&B, Ft_PassFail);
+  B.file_names.envelope = find_file_by_type(&B, Ft_Envelope);
+  B.file_names.env_call = find_file_by_type(&B, Ft_EnvCall);
+
+  // 5. Write config to output TOML file
+  char *filename = resprintf(NULL, "%s/%c.toml", working_dir, B.function);
+  FILE *fp = fopen(filename, "w");
+  if (fp != NULL) {
+    builder_debug(&B, fp);
+    fclose(fp);
+    info("Configuration written to '%s'\n", filename);
+  } else {
+    warn("Cannot open '%s' for writing\n", filename);
+  }
+  free(filename);
 
   Configuration *cfg = malloc(sizeof *cfg);  // mem:circumgyrate
   build_configuration(cfg, &B);

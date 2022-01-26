@@ -8,6 +8,11 @@
 
 #define LINE_LENGTH 1024
 
+/* filenames of generic spice scripts */
+#define MALT_BINSEARCH_FILENAME "malt.binsearch"
+#define MALT_RUN_FILENAME "malt.run"
+#define MALT_PASSFAIL_FILENAME "malt.passfail"
+
 void pname(Configuration *);
 pid_t start_spice(const Configuration *C, double accuracy, double *pc, double *po, const char *call,
                   const char *returnn);
@@ -16,7 +21,7 @@ void call_spice(const Configuration *C, double accuracy, double *pc, double *po,
 int spice_dice(Configuration *);
 int generic_spice_files(void);
 
-/* generic spice file .malt.run */
+/* generic spice file malt.run */
 #define MALT_RUN \
   "\n\
 *.malt.run: called by *.call\n\
@@ -37,13 +42,14 @@ set noaskquit\n\
 .endc\n\
 "
 
-/* generic spice file .malt.binsearch */
+/* generic spice file malt.binsearch */
 /* ***** checking pc everytime is highly inefficent for corner vector margins analysis ***** */
 /* the binary search has been modified to handle multiply/divide */
 /* (instead of plus/minus) in log space */
+
 #define MALT_BINSEARCH \
   "\n\
-*.malt.binsearch: called by *.call\n\
+*" MALT_BINSEARCH_FILENAME ": called by *.call\n\
 *find the operating boundary between the two points pc and po\n\
 *if accuracy=0, see if pc parameter set is pass or fail\n\
 .control\n\
@@ -57,7 +63,7 @@ end\n\
 if ($#passf == 1)\n\
   codeblock $passf -a\n\
 end\n\
-codeblock .malt.passfail -a\n\
+codeblock %1$s/" MALT_PASSFAIL_FILENAME " -a\n\
 \n\
 source $envelope\n\
 pegged=0\n\
@@ -70,7 +76,7 @@ param=pc\n\
 if dashc == 1\n\
   failed=0\n\
 else\n\
-  .malt.passfail\n\
+  %1$s/" MALT_PASSFAIL_FILENAME "\n\
 end\n\
 echo $&failed >> $return\n\
 \n\
@@ -85,7 +91,7 @@ endif\n\
 *check outer point\n\
 if (failed == 0 and po[0] <> 0)\n\
   param=po\n\
-  .malt.passfail\n\
+  %1$s/" MALT_PASSFAIL_FILENAME "\n\
 \n\
 *find margin\n\
   if failed == 0\n\
@@ -99,7 +105,7 @@ if (failed == 0 and po[0] <> 0)\n\
     while (delta[0] > 1)\n\
       deltal=sqrt(deltal)\n\
       delta =0.5*delta\n\
-      .malt.passfail\n\
+      %1$s/" MALT_PASSFAIL_FILENAME "\n\
       if failed=1\n\
         param=(pl == 0)*(param-delta) + (pl == 1)*(param/deltal)\n\
       else\n\
@@ -113,7 +119,7 @@ if (failed == 0 and po[0] <> 0)\n\
   if dasht == 1 or dasht == 2\n\
     dasht=3\n\
     * margin point might pass or fail\n\
-    .malt.passfail\n\
+    %1$s/" MALT_PASSFAIL_FILENAME "\n\
     if pegged == 0\n\
       if failed == 1\n\
         param=(pl == 0)*(param-delta) + (pl == 1)*(param/deltal)\n\
@@ -125,7 +131,7 @@ if (failed == 0 and po[0] <> 0)\n\
     if pegged == 1\n\
       pegged=2\n\
     end\n\
-    .malt.passfail\n\
+    %1$s/" MALT_PASSFAIL_FILENAME "\n\
   end\n\
 \n\
 end\n\
@@ -135,10 +141,10 @@ quit\n\
 .endc\n\
 "
 
-/* generic spice file .malt.passfail */
+/* generic spice file malt.passfail */
 #define MALT_PASSFAIL \
   "\n\
-*.malt.passfail: called by .malt.binsearch\n\
+*" MALT_PASSFAIL_FILENAME ": called by " MALT_BINSEARCH_FILENAME "\n\
 .control\n\
 \n\
 *node names, envelope values, and step values contained in envelope file\n\

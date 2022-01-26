@@ -20,7 +20,7 @@ void makeiter(Configuration *C, char func)
 {
   FILE *fp;
   /* create the iterate file */
-  sprintf(C->file_names.iter, "%s.iterate.%c", C->command, func);
+  resprintf(&C->file_names.iter, "%s.iterate.%c", C->command, func);
   if ((fp = fopen(C->file_names.iter, "w")) == NULL) {
     fprintf(stderr, "malt: Cannot write to the %s file\n", C->file_names.iter);
     exit(EXIT_FAILURE);
@@ -447,7 +447,6 @@ fail:
 int tmargins(Configuration *C, const Space *S)
 {
   int i, j, k;
-  FILE *fp;
   int ret = 0;
 
   /* Trace Margins */
@@ -504,11 +503,7 @@ int tmargins(Configuration *C, const Space *S)
   }
 
   /* make a spice control file to plot all this stuff */
-  sprintf(C->file_names.plot, "%s%s.%c", C->command, C->extensions.plot, C->function);
-  if (!(fp = fopen(C->file_names.plot, "w"))) {
-    fprintf(stderr, "malt: Can not open the file '%s'\n", C->file_names.plot);
-    exit(EXIT_FAILURE);
-  }
+  FILE *fp = new_file_by_type(C, Ft_Plot);
   /* which plots to plot */
   fprintf(fp, "\n.control\n\n* which plots to plot\nnominal  = 1\nmax_min  = 1\nenvelope = 1\n\n");
   /* load the plots */

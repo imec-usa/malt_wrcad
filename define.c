@@ -42,8 +42,7 @@ int define(Configuration *C)
   /* run spice which writes vectors to a file */
   if (C->options.d_simulate) {
     if (C->num_nodes == 0) {
-      fprintf(stderr, "No circuit nodes have been defined\n");
-      exit(EXIT_FAILURE);
+      error("No circuit nodes have been defined\n");
     }
     /* *** need to check for spice executable, etc */
     call_spice(C, 0, NULL, NULL, "define.call",
@@ -60,8 +59,8 @@ int define(Configuration *C)
     /* make the envelope */
     bound(theData, C);
     /* write envelope to a spice-loadable file */
-    sprintf(C->file_names.envelope, "%s%s", C->command, C->extensions.envelope);
-    sprintf(C->file_names.env_call, "%s%s.", C->command, C->extensions.envelope);
+    // don't write to the prior most specific envelope file: create a new (possibly more specific)
+    // one
     spiceBounds(C, theData, scramble);
   }
   /* now we want to call a spice script to view envelope */
@@ -76,13 +75,9 @@ fail:
 void spiceBounds(Configuration *C, Data *D, int *scramble)
 {
   int i, j, k = 0, m;
-  FILE *fp, *fp2;
   int step_div, step_mod, step;
 
-  if (!(fp = fopen(C->file_names.envelope, "w"))) {
-    fprintf(stderr, "malt: Can not open the file '%s'\n", C->file_names.envelope);
-    exit(EXIT_FAILURE);
-  }
+  FILE *fp = new_file_by_type(C, Ft_Envelope);
   /* print the header material */
   fprintf(fp, "Title: Envelopes\n");
   fprintf(fp, "Plotname: Transient\n");
@@ -105,10 +100,7 @@ void spiceBounds(Configuration *C, Data *D, int *scramble)
   }
   fclose(fp);
   /* * * * file that loads the above file */
-  if (!(fp2 = fopen(C->file_names.env_call, "w"))) {
-    fprintf(stderr, "malt: Can not open the file '%s'\n", C->file_names.env_call);
-    exit(EXIT_FAILURE);
-  }
+  FILE *fp2 = new_file_by_type(C, Ft_EnvCall);
   /* header stuff */
   fprintf(fp2, "* the envelope of acceptable values for each trace\n* called by binsearch "
                "generic\n.control\n");
@@ -145,13 +137,8 @@ void spiceBounds(Configuration *C, Data *D, int *scramble)
 void spicePlot(Configuration *C)
 {
   int i;
-  FILE *fp;
+  FILE *fp = new_file_by_type(C, Ft_Plot);
 
-  sprintf(C->file_names.plot, "%s%s.%c", C->command, C->extensions.plot, C->function);
-  if (!(fp = fopen(C->file_names.plot, "w"))) {
-    fprintf(stderr, "malt: Can not open the file '%s'\n", C->file_names.plot);
-    exit(EXIT_FAILURE);
-  }
   /* print the file */
   fprintf(fp, "\n.control\nload %s.nom\nload %s\nsetplot tran1\nset group\nplot", C->command,
           C->file_names.envelope);

@@ -3,6 +3,7 @@
 #ifndef CONFIG
 #define CONFIG
 
+#include "list.h"
 #include <stdio.h>
 
 #define LINE_LENGTH 1024
@@ -47,9 +48,9 @@ struct file_names {
   char *param;
   char *passf;
   char *envelope;
-  char *config;
   char *env_call;
   char *plot;
+  // TODO: delete these
   char *iter;
   char *pname;
 };
@@ -59,14 +60,22 @@ struct extensions {
   const char *param;
   const char *passf;
   const char *envelope;
-  const char *config;
+  const char *env_call;
   const char *plot;
   char *which_trace;
 };
 
+enum filetype {
+  Ft_Circuit,
+  Ft_Parameters,
+  Ft_PassFail,
+  Ft_Envelope,
+  Ft_EnvCall,
+  Ft_Plot,
+};
+
 struct options {
   int spice_verbose;
-  int threads;
   int max_subprocesses;
   int print_terminal;
   double binsearch_accuracy;
@@ -94,6 +103,8 @@ typedef struct config {
 
   int func_init;
 
+  list_t working_tree;
+
   struct file_names file_names;
 
   struct extensions extensions;
@@ -116,5 +127,7 @@ typedef struct args Args;
 
 Configuration *Configure(const Args *args, FILE *log);
 void freeConfiguration(Configuration *C);
+
+FILE *new_file_by_type(Configuration *C, enum filetype kind);
 
 #endif

@@ -15,15 +15,14 @@
 void pname(Configuration *C)
 {
   FILE *fp;
-  int i;
 
-  sprintf(C->file_names.pname, "%s.pname.%c", C->command, C->function);
+  resprintf(&C->file_names.pname, "%s.pname.%c", C->command, C->function);
   if ((fp = fopen(C->file_names.pname, "w")) == NULL) {
     fprintf(stderr, "malt: Cannot write to the '%s' file", C->file_names.pname);
     exit(EXIT_FAILURE);
   }
   fprintf(fp, "* %s\n\n.control\n\n", C->file_names.pname);
-  for (i = 0; C->num_params_all > i; ++i) {
+  for (int i = 0; C->num_params_all > i; ++i) {
     fprintf(fp, "%s = param[%i]\n", C->params[i].name, i + 1);
   }
   fprintf(fp, "\n.endc\n");
@@ -59,9 +58,9 @@ pid_t start_spice(const Configuration *C, double accuracy, double *pc, double *p
   /* header stuff */
   fprintf(fp, "* %s\n\n.control\n\n", call);
   fprintf(fp, "set circuit = ( %s )\n", C->file_names.circuit);
-  fprintf(fp, "set param   = ( %s )\n", (*C->file_names.param) ? C->file_names.param : "no file");
-  fprintf(fp, "set passf   = ( %s )\n", (*C->file_names.passf) ? C->file_names.passf : "no file");
-  fprintf(fp, "set pname   = ( %s.pname.%c )\n", C->command, C->function);
+  fprintf(fp, "set param   = ( %s )\n", (C->file_names.param) ? C->file_names.param : "no file");
+  fprintf(fp, "set passf   = ( %s )\n", (C->file_names.passf) ? C->file_names.passf : "no file");
+  fprintf(fp, "set pname   = ( %s )\n", C->file_names.pname);
   fprintf(fp, "set return  = ( %s )\n", returnn);
   /* node math is legal (i.e. v(1)-v(2)) */
   /* ...so long as the component vectors also appear individually */
@@ -92,9 +91,11 @@ pid_t start_spice(const Configuration *C, double accuracy, double *pc, double *p
     /* nominal parameter values */
     for (i = 0; C->num_params_all > i; ++i)
       fprintf(fp, "param[%i]=%g\n", i + 1, C->params[i].nominal);
-    fprintf(fp, "\nsource .malt.run\n\n.endc\n");
+    char *cwd = getcwd(NULL, 0);
+    fprintf(fp, "\nsource %s/%s\n\n.endc\n", cwd, MALT_RUN_FILENAME);
+    free(cwd);
   } else {
-    fprintf(fp, "set envelope = ( %s. )\n", C->file_names.envelope);
+    fprintf(fp, "set envelope = ( %s )\n", C->file_names.env_call);
     /* binary search limits stuff */
     fprintf(fp, "pc[0]=0\npo[0]=%g\n", accuracy);
     /* pc on plane, po on the boundary */
@@ -115,7 +116,9 @@ pid_t start_spice(const Configuration *C, double accuracy, double *pc, double *p
       fprintf(fp, "po[%i]=%g\n", i + 1, C->params[i].nominal);
       fprintf(fp, "pl[%i]=%d\n", i + 1, C->params[i].logs);
     }
-    fprintf(fp, "\nsource .malt.binsearch\n\n.endc\n");
+    char *cwd = getcwd(NULL, 0);
+    fprintf(fp, "\nsource %s/%s\n\n.endc\n", cwd, MALT_BINSEARCH_FILENAME);
+    free(cwd);
   }
   /* all routines */
   if (fclose(fp)) {
@@ -178,20 +181,22 @@ void call_spice(const Configuration *C, double accuracy, double *pc, double *po,
 int generic_spice_files(void)
 {
   /* create generic files even if they already exist */
-#define CREATE_FILE(name, contents)                                   \
+#define CREATE_FILE(name, contents, ...)                              \
   {                                                                   \
     FILE *fp = fopen(name, "w");                                      \
     if (fp == NULL) {                                                 \
       fprintf(stderr, "malt: Cannot write to the '" name "' file\n"); \
       return 0;                                                       \
     }                                                                 \
-    fprintf(fp, "%s", contents);                                      \
+    fprintf(fp, contents, ##__VA_ARGS__);                             \
     fclose(fp);                                                       \
   }
 
-  CREATE_FILE(".malt.run", MALT_RUN)
-  CREATE_FILE(".malt.binsearch", MALT_BINSEARCH)
-  CREATE_FILE(".malt.passfail", MALT_PASSFAIL)
+  char *cwd = getcwd(NULL, 0);
+  CREATE_FILE(MALT_RUN_FILENAME, MALT_RUN)
+  CREATE_FILE(MALT_BINSEARCH_FILENAME, MALT_BINSEARCH, cwd)
+  CREATE_FILE(MALT_PASSFAIL_FILENAME, MALT_PASSFAIL)
+  free(cwd);
 
 #undef CREATE_FILE
 

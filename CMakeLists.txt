@@ -21,6 +21,7 @@ add_executable(malt
                corners.c
                define.c
                gplot.c
+               list.c
                malt.c
                margins.c
                marg_opt_yield.c

@@ -7,7 +7,7 @@
 
 typedef struct args {
   int function;
-  char *circuit_name;
+  char *configuration;
   int verbosity;
 } Args;
 
@@ -30,24 +30,27 @@ void malt_status(FILE *, const char *, ...);
     exit(EXIT_FAILURE);                                          \
   }
 
-#define MALTUSAGE "malt [-h] {-d|-m|-t|-2|-y|-o} <circuit_name>[.<ext_1>[.<ext_2>[...]]]\n"
-#define MALTVERSION "3.0"
-#define MALTHELP                                                            \
-  "MALT " MALTVERSION "\n"                                                  \
-  "  Parametric yield optimization utility for use with WRSpice\n"          \
-  "SYNOPSIS\n"                                                              \
-  "  " MALTUSAGE "OPTIONS\n"                                                \
-  "  -h\tPrint help message and exit\n"                                     \
-  "  -d\tDefine correct circuit operation\n"                                \
-  "  -m\tCalculate individual parameter margins\n"                          \
-  "  -t\tTrace nodes at marginal parameter values\n"                        \
-  "  -2\tCalculate operating region in 2 dimensions\n"                      \
-  "  -y\tCalculate circuit yield using corner analysis\n"                   \
-  "  -o\tOptimize yield using inscribed hyperspheres\n"                     \
-  "CIRCUIT NAME\n"                                                          \
-  "  Used to find the .config, .cir, .param, .passf, and .envelope files\n" \
-  "  Name extensions are delimited by periods\n"                            \
-  "  The most specfic .cir, .param, .passf, and .envelope files are used\n" \
-  "  The .config files are parsed from most general to most specific\n"
+#define MALTUSAGE "malt [-h] {-d|-m|-t|-2|-y|-o} CONFIG\n"
+#define MALTVERSION "3.1-dev"
+#define MALTHELP                                                                      \
+  "Malt " MALTVERSION "\n"                                                            \
+  "  Parametric yield optimization utility for use with WRSpice\n"                    \
+  "Usage: " MALTUSAGE "  -h\tPrint help message and exit\n"                           \
+  "  -d\tDefine correct circuit operation\n"                                          \
+  "  -m\tCalculate individual parameter margins\n"                                    \
+  "  -t\tTrace nodes at marginal parameter values\n"                                  \
+  "  -2\tCalculate operating region in 2 dimensions\n"                                \
+  "  -y\tCalculate circuit yield using corner analysis\n"                             \
+  "  -o\tOptimize yield using inscribed hyperspheres\n"                               \
+  "\n"                                                                                \
+  "CONFIG\n"                                                                          \
+  "  Path (relative to the current directory) of the most specific applicable\n"      \
+  "  configuration (.toml) file for this analysis. When Malt runs, it searches in\n"  \
+  "  the current directory and all ancestors for a file named Malt.toml, which is\n"  \
+  "  taken as the base configuration. Then all .toml files of which CONFIG is a\n"    \
+  "  path prefix are processed from least to most specific.\n"                        \
+  "\n"                                                                                \
+  "  Generated files such as parameter, pass/fail, and envelope files are searched\n" \
+  "  for in similar fashion starting from the _malt directory, if one is present.\n"
 
 #endif
