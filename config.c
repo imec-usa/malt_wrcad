@@ -86,11 +86,7 @@ static void builder_debug(const Builder *B, FILE *fp)
   comment("General Options");
   comment("(These options must precede any [section] in this file)");
   key_val("binsearch_accuracy", "%g  # fraction of sigma", B->options.binsearch_accuracy);
-  key_val("max_subprocesses", "%d", B->options.max_subprocesses);
   key_val("print_terminal", "%s", B->options.print_terminal ? "true" : "false");
-  // TODO: factor spice_call_name and spice_verbose into "simulator options"
-  key_val("spice_call_name", "'%s'", B->options.spice_call_name);
-  key_val("verbose", "%s", B->options.spice_verbose ? "true" : "false");
   comment("Nodes may be specified as strings or tables.");
   comment("If dx or dt is not provided, [envelope] will be used instead.");
   comment("Example:");
@@ -107,6 +103,12 @@ static void builder_debug(const Builder *B, FILE *fp)
     }
   }
   fprintf(fp, "%s]\n", B->num_nodes == 0 ? "" : "\n");
+
+  brk();
+  section("simulator");
+  key_val("max_subprocesses", "%d", B->options.max_subprocesses);
+  key_val("command", "'%s'", B->options.spice_call_name);
+  key_val("verbose", "%s", B->options.spice_verbose ? "true" : "false");
 
   brk();
   comment("Default envelope settings for all nodes");
@@ -375,6 +377,20 @@ __attribute__((nonnull)) static int read_a_string(const char **dest, toml_table_
   if (ext.ok) {
     *dest = ext.u.s;
     return 1;
+  } else {
+    return 0;
+  }
+}
+
+/* Parse the [simulator] options section of this file.
+ * Returns 0 if the section is not present or incomplete and 1 otherwise. */
+static int read_simulator(Builder *C, toml_table_t *t)
+{
+  toml_table_t *simulator = toml_table_in(t, "simulator");
+  if (simulator) {
+    return read_an_int(&C->options.max_subprocesses, simulator, "max_subprocesses") &&
+           read_a_string(&C->options.spice_call_name, simulator, "command") &&
+           read_a_bool(&C->options.spice_verbose, simulator, "verbose");
   } else {
     return 0;
   }
@@ -650,15 +666,9 @@ static int try_parse_configuration(Builder *C, char *filename)
   }
 
   // options:
-  // TODO: reconcile verbosity from command line and configs
-  read_a_bool(&C->options.spice_verbose, t, "verbose");
-  read_an_int(&C->options.max_subprocesses, t, "max_subprocesses");
-  assert(C->options.max_subprocesses >= 0);  // 0 means unlimited, negative is illegal
   // TODO: check that print_terminal is working as intended
   read_a_bool(&C->options.print_terminal, t, "print_terminal");
   read_a_double(&C->options.binsearch_accuracy, t, "binsearch_accuracy");
-  // FIXME: I think this leaks memory when successful
-  read_a_string(&C->options.spice_call_name, t, "spice_call_name");
 
   read_nodes(C, t);
   read_parameters(C, t);
