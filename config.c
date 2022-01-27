@@ -382,18 +382,56 @@ __attribute__((nonnull)) static int read_a_string(const char **dest, toml_table_
   }
 }
 
+/* Validates that this table contains no keys except for the ones passed.
+ * Terminate the argument list with NULL.
+ * Returns false if the table contains keys other than those passed as arguments. */
+static bool keys_ok(Builder *C, toml_table_t *t, ...)
+{
+  for (size_t i = 0;; ++i) {
+    const char *key = toml_key_in(t, i);
+    if (!key) {
+      break;
+    }
+
+    va_list argv;
+    va_start(argv, t);
+    for (;;) {
+      char *arg = va_arg(argv, const char *);
+      if (!arg) {
+        // this key was not found in the arguments list
+        break;
+      } else if (strcmp(arg, key) == 0) {
+        goto next_key;
+      }
+    }
+    va_end(argv);
+
+    warn("Unknown key: '%s'\n", key);
+    return false;
+  next_key:;
+  }
+  return true;
+}
+
+#define SCHEMA(table, ...)                        \
+  toml_table_t *table = toml_table_in(t, #table); \
+  if (!table) {                                   \
+    return 0;                                     \
+  }                                               \
+  if (!keys_ok(C, table, __VA_ARGS__, NULL)) {    \
+    error("While parsing [" #table "]\n");        \
+  }
+
 /* Parse the [simulator] options section of this file.
  * Returns 0 if the section is not present or incomplete and 1 otherwise. */
 static int read_simulator(Builder *C, toml_table_t *t)
 {
-  toml_table_t *simulator = toml_table_in(t, "simulator");
-  if (simulator) {
-    return read_an_int(&C->options.max_subprocesses, simulator, "max_subprocesses") &&
-           read_a_string(&C->options.spice_call_name, simulator, "command") &&
-           read_a_bool(&C->options.spice_verbose, simulator, "verbose");
-  } else {
-    return 0;
-  }
+  SCHEMA(simulator, "max_subprocesses", "command", "verbose");
+  int n = 0;
+  n += read_an_int(&C->options.max_subprocesses, simulator, "max_subprocesses");
+  n += read_a_string(&C->options.spice_call_name, simulator, "command");
+  n += read_a_bool(&C->options.spice_verbose, simulator, "verbose");
+  return n;
 }
 
 /* Parse the [envelope] section of this file.
@@ -401,13 +439,9 @@ static int read_simulator(Builder *C, toml_table_t *t)
 static int read_envelope(Builder *C, toml_table_t *t)
 {
   // read [envelope] table (NOTE: must be done before nodes)
-  toml_table_t *envelope = toml_table_in(t, "envelope");
-  if (envelope) {
-    return read_a_double(&C->node_defaults.dx, envelope, "dx") &&
-           read_a_double(&C->node_defaults.dt, envelope, "dt");
-  } else {
-    return 0;
-  }
+  SCHEMA(envelope, "dx", "dt");
+  return read_a_double(&C->node_defaults.dx, envelope, "dx") &&
+         read_a_double(&C->node_defaults.dt, envelope, "dt");
 }
 
 /* Read the `nodes` list from the top level of the toml file. Also reads [envelope] if nodes are
@@ -443,7 +477,8 @@ static int read_nodes(Builder *C, toml_table_t *t)
       } else {
         toml_table_t *node = toml_table_at(nodes, n);
         if (node) {
-          // TODO: permit nodes to have metadata, and check that dx, dt are nonzero
+          // if (!keys_ok(C, node, "node", "envelope", NULL)) {
+          //  TODO: permit nodes to have metadata, and check that dx, dt are nonzero
           error("Table not supported for node %zu (this is a bug in Malt)\n", n);
         } else {
           error("Node %zu is neither a string nor a table\n", n);
@@ -549,16 +584,14 @@ static int read_parameters(Builder *C, toml_table_t *t)
  * Returns the number of extensions successfully read. */
 static int read_extensions(Builder *C, toml_table_t *t)
 {
-  toml_table_t *extensions = toml_table_in(t, "extensions");
+  SCHEMA(extensions, "circuit", "plot", "parameters", "passfail", "envelope", "env_call");
   int n = 0;
-  if (extensions) {
-    n += read_a_string(&C->extensions.circuit, extensions, "circuit");  // mem:timetaker
-    n += read_a_string(&C->extensions.plot, extensions, "plot");        // mem:irrepairable
-    n += read_a_string(&C->extensions.param, extensions, "parameters");
-    n += read_a_string(&C->extensions.passf, extensions, "passfail");
-    n += read_a_string(&C->extensions.envelope, extensions, "envelope");
-    n += read_a_string(&C->extensions.env_call, extensions, "env_call");
-  }
+  n += read_a_string(&C->extensions.circuit, extensions, "circuit");  // mem:timetaker
+  n += read_a_string(&C->extensions.plot, extensions, "plot");        // mem:irrepairable
+  n += read_a_string(&C->extensions.param, extensions, "parameters");
+  n += read_a_string(&C->extensions.passf, extensions, "passfail");
+  n += read_a_string(&C->extensions.envelope, extensions, "envelope");
+  n += read_a_string(&C->extensions.env_call, extensions, "env_call");
   return n;
 }
 
@@ -566,12 +599,10 @@ static int read_extensions(Builder *C, toml_table_t *t)
  * Returns the number of key-value pairs successfully converted. */
 static int read_define_opts(Builder *C, toml_table_t *t)
 {
-  toml_table_t *define = toml_table_in(t, "define");
+  SCHEMA(define, "simulate", "envelope");
   int n = 0;
-  if (define) {
-    n += read_a_bool(&C->options.d_simulate, define, "simulate");
-    n += read_a_bool(&C->options.d_envelope, define, "envelope");
-  }
+  n += read_a_bool(&C->options.d_simulate, define, "simulate");
+  n += read_a_bool(&C->options.d_envelope, define, "envelope");
   return n;
 }
 
@@ -579,19 +610,18 @@ static int read_define_opts(Builder *C, toml_table_t *t)
  * Returns the number of key-value pairs successfully converted. */
 static int read_yield_opts(Builder *C, toml_table_t *t)
 {
-  toml_table_t *yield = toml_table_in(t, "yield");
+  SCHEMA(yield, "search_depth", "search_width", "search_steps", "max_mem_k", "accuracy",
+         "print_every");
   int n = 0;
-  if (yield) {
-    n += read_an_int(&C->options.y_search_depth, yield, "search_depth");
-    n += read_an_int(&C->options.y_search_width, yield, "search_width");
-    n += read_an_int(&C->options.y_search_steps, yield, "search_steps");
-    // TODO: parse a subtable {k: 4194304} or something instead of units in the name (also in
-    // optimize)
-    n += read_an_int(&C->options.y_max_mem_k, yield, "max_mem_k");
-    n += read_a_double(&C->options.y_accuracy, yield, "accuracy");
-    // TODO: check that print_every is working optimally
-    n += read_an_int(&C->options.y_print_every, yield, "print_every");
-  }
+  n += read_an_int(&C->options.y_search_depth, yield, "search_depth");
+  n += read_an_int(&C->options.y_search_width, yield, "search_width");
+  n += read_an_int(&C->options.y_search_steps, yield, "search_steps");
+  // TODO: parse a subtable {k: 4194304} or something instead of units in the name (also in
+  // optimize)
+  n += read_an_int(&C->options.y_max_mem_k, yield, "max_mem_k");
+  n += read_a_double(&C->options.y_accuracy, yield, "accuracy");
+  // TODO: check that print_every is working optimally
+  n += read_an_int(&C->options.y_print_every, yield, "print_every");
   return n;
 }
 
@@ -599,12 +629,10 @@ static int read_yield_opts(Builder *C, toml_table_t *t)
  * Returns the number of key-value pairs successfully converted. */
 static int read_optimize_opts(Builder *C, toml_table_t *t)
 {
-  toml_table_t *optimize = toml_table_in(t, "optimize");
+  SCHEMA(optimize, "min_iter", "max_mem_k");
   int n = 0;
-  if (optimize) {
-    n += read_an_int(&C->options.o_min_iter, optimize, "min_iter");
-    n += read_an_int(&C->options.o_min_iter, optimize, "max_mem_k");
-  }
+  n += read_an_int(&C->options.o_min_iter, optimize, "min_iter");
+  n += read_an_int(&C->options.o_min_iter, optimize, "max_mem_k");
   return n;
 }
 
@@ -612,38 +640,36 @@ static int read_optimize_opts(Builder *C, toml_table_t *t)
  * Returns the number of sweeps successfully converted. */
 static int read_xy_sweeps(Builder *C, toml_table_t *t)
 {
-  toml_table_t *xy = toml_table_in(t, "xy");
+  SCHEMA(xy, "sweeps", "iterations");
+  toml_array_t *sweeps = toml_array_in(xy, "sweeps");
   int len_sweeps = 0;
-  if (xy) {
-    toml_array_t *sweeps = toml_array_in(xy, "sweeps");
-    if (sweeps) {
-      len_sweeps = toml_array_nelem(sweeps);
-      // overwrite old sweeps
-      // FIXME: clobbering leaks memory for .name_x, .name_y
-      C->_2D = realloc(C->_2D, len_sweeps * sizeof *C->_2D);  // mem:hypersexual
-      if (C->num_2D != 0) {
-        warn("Overwriting previously configured 2D sweeps\n");
+  if (sweeps) {
+    len_sweeps = toml_array_nelem(sweeps);
+    // overwrite old sweeps
+    // FIXME: clobbering leaks memory for .name_x, .name_y
+    C->_2D = realloc(C->_2D, len_sweeps * sizeof *C->_2D);  // mem:hypersexual
+    if (C->num_2D != 0) {
+      warn("Overwriting previously configured 2D sweeps\n");
+    }
+    C->num_2D = len_sweeps;
+    for (int n = 0; n < len_sweeps; ++n) {
+      toml_table_t *sweep = toml_table_at(sweeps, n);
+      if (!sweep) {
+        error("2D sweep #%d is not a table\n", n);
       }
-      C->num_2D = len_sweeps;
-      for (int n = 0; n < len_sweeps; ++n) {
-        toml_table_t *sweep = toml_table_at(sweeps, n);
-        if (!sweep) {
-          error("2D sweep #%d is not a table\n", n);
-        }
-        toml_datum_t x = toml_string_in(sweep, "x");  // mem:schizzo
-        toml_datum_t y = toml_string_in(sweep, "y");  // mem:foreconsent
-        if (x.ok && y.ok) {
-          C->_2D[n].name_x = x.u.s;
-          C->_2D[n].name_y = y.u.s;
-        } else {
-          error("2D sweep #%d must define both x and y parameters\n", n);
-        }
+      toml_datum_t x = toml_string_in(sweep, "x");  // mem:schizzo
+      toml_datum_t y = toml_string_in(sweep, "y");  // mem:foreconsent
+      if (x.ok && y.ok) {
+        C->_2D[n].name_x = x.u.s;
+        C->_2D[n].name_y = y.u.s;
+      } else {
+        error("2D sweep #%d must define both x and y parameters\n", n);
       }
     }
-    toml_datum_t iterations = toml_int_in(xy, "iterations");
-    if (iterations.ok) {
-      C->options._2D_iter = iterations.u.i;
-    }
+  }
+  toml_datum_t iterations = toml_int_in(xy, "iterations");
+  if (iterations.ok) {
+    C->options._2D_iter = iterations.u.i;
   }
   return len_sweeps;
 }
@@ -666,10 +692,15 @@ static int try_parse_configuration(Builder *C, char *filename)
   }
 
   // options:
+  if (!keys_ok(C, t, "print_terminal", "binsearch_accuracy", "simulator", "nodes", "parameters",
+               "extensions", "define", "margins", "trace", "yield", "optimize", "xy", NULL)) {
+    error("While parsing a TOML file (%s)\n", filename);
+  }
   // TODO: check that print_terminal is working as intended
   read_a_bool(&C->options.print_terminal, t, "print_terminal");
   read_a_double(&C->options.binsearch_accuracy, t, "binsearch_accuracy");
 
+  read_simulator(C, t);
   read_nodes(C, t);
   read_parameters(C, t);
   read_extensions(C, t);
