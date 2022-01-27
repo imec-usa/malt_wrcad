@@ -17,6 +17,7 @@ extern list_t EMPTY_LIST;
 
 void lst_reverse(list_t *lst);
 list_t *lst_push(list_t *lst, char *str);
+char *lst_pop(list_t *lst);
 void lst_drop(list_t *lst);
 bool lst_empty(list_t *lst);
 char *lst_last(list_t *lst);

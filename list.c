@@ -28,6 +28,13 @@ list_t *lst_push(list_t *lst, char *str)
   return lst;
 }
 
+/* Removes and returns the last string in the list, without reallocating. */
+char *lst_pop(list_t *lst)
+{
+  lst->len--;
+  return lst->ptr[lst->len];
+}
+
 /* Frees `*lst` and all its contents. */
 void lst_drop(list_t *lst)
 {

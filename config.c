@@ -979,14 +979,22 @@ static void configure_target(Builder *C, list_t ptree, char *target)
     configure_directory(C, &project_dir, &working_dir, component);
   }
 
+  // 1.5. Validate `target`
+  if (target[0] == '/') {
+    error("Absolute path (%s) not allowed for target\n", target);
+  }
   // chop off the trailing .toml or .cir of *target, if present
   char *ext = strrchr(target, '.');
   if (ext != NULL && (strcmp(ext, ".toml") == 0 || strcmp(ext, C->extensions.circuit) == 0)) {
     *ext = '\0';
   }
-  if (target[0] == '/') {
-    error("Absolute path (%s) not allowed for target\n", target);
+  // and one optional trailing slash
+  char *trailing_slash = strrchr(target, '/');
+  if (trailing_slash && trailing_slash[1] == '\0') {
+    *trailing_slash = '\0';
   }
+
+  char *orig_target = strdup(target);
 
   // 2. traverse into `target` one path component at a time
   for (char *component = NULL, *etc = target; component != etc;) {
@@ -996,8 +1004,25 @@ static void configure_target(Builder *C, list_t ptree, char *target)
       *endp = '\0';
       etc = endp + 1;
     }
+    if (strcmp(component, ".") == 0) {
+      continue;
+    }
+    if (strcmp(component, "..") == 0) {
+      // remove the last directory from the project tree and working tree
+      // (this is not the best way to handle unusual inputs but it should avoid bad error messages
+      // when using relative paths in the normal way)
+      if (lst_empty(&C->project_tree)) {
+        error("Config path (%s) is not in project tree (%s)", orig_target, project_dir)
+      }
+      free(lst_pop(&C->project_tree));
+      free(lst_pop(&C->working_tree));
+      *strrchr(project_dir, '/') = '\0';
+      *strrchr(working_dir, '/') = '\0';
+      continue;
+    }
     configure_directory(C, &project_dir, &working_dir, component);
   }
+  free(orig_target);
   // one last time for the final directory with "the.toml"
   configure_directory(C, &project_dir, &working_dir, "the");
 
