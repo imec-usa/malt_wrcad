@@ -19,7 +19,6 @@ pid_t start_spice(const Configuration *C, double accuracy, double *pc, double *p
 void call_spice(const Configuration *C, double accuracy, double *pc, double *po, const char *call,
                 const char *returnn);
 int spice_dice(Configuration *);
-int generic_spice_files(void);
 
 /* generic spice file malt.run */
 #define MALT_RUN \

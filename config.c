@@ -105,6 +105,7 @@ static void builder_debug(const Builder *B, FILE *fp)
   fprintf(fp, "%s]\n", B->num_nodes == 0 ? "" : "\n");
 
   brk();
+  comment("Simulator options");
   section("simulator");
   key_val("max_subprocesses", "%d", B->options.max_subprocesses);
   key_val("command", "'%s'", B->options.spice_call_name);
@@ -153,7 +154,7 @@ static void builder_debug(const Builder *B, FILE *fp)
   brk();
   comment("Options for 2D margin analysis");
   section("xy");
-  key_val("2D_iter", "%d", B->options._2D_iter);
+  key_val("iterations", "%d", B->options._2D_iter);
   fprintf(fp, "sweeps = [\n");
   fprintf(fp, "  # Example:\n");
   fprintf(fp, "  # {x = \"Xj\", y = \"Xl\"},\n");
@@ -197,9 +198,9 @@ static void builder_debug(const Builder *B, FILE *fp)
   key_val("search_width", "%d", B->options.y_search_width);
   comment("range: 1-40");
   key_val("search_steps", "%d", B->options.y_search_steps);
-  key_val("y_max_mem_k", "%d", B->options.y_max_mem_k);
-  key_val("y_accuracy", "%g", B->options.y_accuracy);
-  key_val("y_print_every", "%d", B->options.y_print_every);
+  key_val("max_mem_k", "%d", B->options.y_max_mem_k);
+  key_val("accuracy", "%g", B->options.y_accuracy);
+  key_val("print_every", "%d", B->options.y_print_every);
 
   brk();
   comment("Options for parameter optimization");
@@ -688,7 +689,8 @@ static int try_parse_configuration(Builder *C, char *filename)
 
   // options:
   if (!keys_ok(C, t, "print_terminal", "binsearch_accuracy", "simulator", "nodes", "parameters",
-               "extensions", "define", "margins", "trace", "yield", "optimize", "xy", NULL)) {
+               "envelope", "extensions", "define", "margins", "trace", "yield", "optimize", "xy",
+               NULL)) {
     error("While parsing a TOML file (%s)\n", filename);
   }
   // TODO: check that print_terminal is working as intended
@@ -935,27 +937,30 @@ found:
   return tree;
 }
 
-static void configure_directory(Builder *C, char **project, char **work, const char *next_component)
+static void configure_directory(Builder *C, const char *next_component)
 {
+  char *path = NULL;
+  // add the path itself to the project tree
+  resprintf(&path, "%s/%s", lst_last(&C->project_tree), next_component);
+  lst_push(&C->project_tree, path);
+
+  // in each directory try both <next_component>.toml and <next_component>/the.toml
   char *filename = NULL;
-  // in each directory try the next component .toml
-  resprintf(&filename, "%s/%s.toml", *project, next_component);
+  resprintf(&filename, "%s.toml", path);
   if (try_parse_configuration(C, filename)) {
     info("Parsed configuration: '%s'\n", filename);
   }
-  // add the directory itself to the project tree
-  lst_push(&C->project_tree, strdup(*project));
+  resprintf(&filename, "%s/the.toml", path);
+  if (try_parse_configuration(C, filename)) {
+    info("Parsed configuration: '%s'\n", filename);
+  }
+  free(filename);
 
   // and create the parallel working directory, if it does not yet exist
-  mkdir(*work, 0777);
-  lst_push(&C->working_tree, strdup(*work));
-
-  // update project and working directories in a pointlessly complicated fashion
-  resprintf(&filename, "%s/%s", *project, next_component);
-  resprintf(project, "%s/%s", *work, next_component);
-  free(*work);
-  *work = *project;
-  *project = filename;
+  char *work = NULL;
+  resprintf(&work, "%s/%s", lst_last(&C->working_tree), next_component);
+  mkdir(work, 0777);
+  lst_push(&C->working_tree, work);
 }
 
 /* Walks *down* the directory tree from the project root to the `target`, which is presumed to be
@@ -969,19 +974,21 @@ static void configure_target(Builder *C, list_t ptree, char *target)
 {
   assert(ptree.len > 0);
 
-  char *project_dir = strdup(ptree.ptr[0]);
+  lst_push(&C->project_tree, strdup(ptree.ptr[0]));
   // TODO: read working directory name from Malt.toml
-  char *working_dir = resprintf(NULL, "%s/%s", project_dir, "_malt");
+  char *work = resprintf(NULL, "%s/%s", ptree.ptr[0], "_malt");
+  lst_push(&C->working_tree, work);
+  mkdir(work, 0777);
 
   // 1. traverse the directories already discovered by `configure_project_root`
   for (size_t i = 1; i < ptree.len; ++i) {
     char *component = ptree.ptr[i];
-    configure_directory(C, &project_dir, &working_dir, component);
+    configure_directory(C, component);
   }
 
   // 1.5. Validate `target`
   if (target[0] == '/') {
-    error("Absolute path (%s) not allowed for target\n", target);
+    error("Config path (%s) may not be absolute\n", target);
   }
   // chop off the trailing .toml or .cir of *target, if present
   char *ext = strrchr(target, '.');
@@ -993,8 +1000,6 @@ static void configure_target(Builder *C, list_t ptree, char *target)
   if (trailing_slash && trailing_slash[1] == '\0') {
     *trailing_slash = '\0';
   }
-
-  char *orig_target = strdup(target);
 
   // 2. traverse into `target` one path component at a time
   for (char *component = NULL, *etc = target; component != etc;) {
@@ -1008,26 +1013,12 @@ static void configure_target(Builder *C, list_t ptree, char *target)
       continue;
     }
     if (strcmp(component, "..") == 0) {
-      // remove the last directory from the project tree and working tree
-      // (this is not the best way to handle unusual inputs but it should avoid bad error messages
-      // when using relative paths in the normal way)
-      if (lst_empty(&C->project_tree)) {
-        error("Config path (%s) is not in project tree (%s)", orig_target, project_dir)
-      }
-      free(lst_pop(&C->project_tree));
-      free(lst_pop(&C->working_tree));
-      *strrchr(project_dir, '/') = '\0';
-      *strrchr(working_dir, '/') = '\0';
-      continue;
+      // we've already processed the config file so can't back out
+      error("Config path must not contain parent links (..)");
     }
-    configure_directory(C, &project_dir, &working_dir, component);
+    configure_directory(C, component);
   }
-  free(orig_target);
-  // one last time for the final directory with "the.toml"
-  configure_directory(C, &project_dir, &working_dir, "the");
 
-  free(project_dir);
-  free(working_dir);
   lst_drop(&ptree);
 }
 

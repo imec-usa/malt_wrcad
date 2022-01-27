@@ -11,6 +11,37 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+/* Creates SPICE input files that are used by other routines.
+ *
+ * Returns 0 if opening any of the files fails.
+ */
+static int generic_spice_files(const Configuration *C)
+{
+  // these files go in the root of the working tree
+  const char *wd = C->working_tree.ptr[0];
+  char *filename = NULL;
+  /* create generic files even if they already exist */
+#define CREATE_FILE(name, contents, ...)                      \
+  {                                                           \
+    resprintf(&filename, "%s/" name, C->working_tree.ptr[0]); \
+    FILE *fp = fopen(filename, "w");                          \
+    if (fp == NULL) {                                         \
+      error("Cannot create %s\n", filename);                  \
+    }                                                         \
+    fprintf(fp, contents, ##__VA_ARGS__);                     \
+    fclose(fp);                                               \
+  }
+
+  CREATE_FILE(MALT_RUN_FILENAME, MALT_RUN)
+  CREATE_FILE(MALT_BINSEARCH_FILENAME, MALT_BINSEARCH, wd)
+  CREATE_FILE(MALT_PASSFAIL_FILENAME, MALT_PASSFAIL)
+
+#undef CREATE_FILE
+  free(filename);
+
+  return 1;
+}
+
 /* remake pname file whenever included/excluded parameters change */
 void pname(Configuration *C)
 {
@@ -48,7 +79,7 @@ pid_t start_spice(const Configuration *C, double accuracy, double *pc, double *p
 
   /* generic file generation */
   if (C->function == 'd') {
-    generic_spice_files();
+    generic_spice_files(C);
   }
   /* malt2spice file */
   if ((fp = fopen(call, "w")) == NULL) {
@@ -91,9 +122,7 @@ pid_t start_spice(const Configuration *C, double accuracy, double *pc, double *p
     /* nominal parameter values */
     for (i = 0; C->num_params_all > i; ++i)
       fprintf(fp, "param[%i]=%g\n", i + 1, C->params[i].nominal);
-    char *cwd = getcwd(NULL, 0);
-    fprintf(fp, "\nsource %s/%s\n\n.endc\n", cwd, MALT_RUN_FILENAME);
-    free(cwd);
+    fprintf(fp, "\nsource %s/%s\n\n.endc\n", C->working_tree.ptr[0], MALT_RUN_FILENAME);
   } else {
     fprintf(fp, "set envelope = ( %s )\n", C->file_names.env_call);
     /* binary search limits stuff */
@@ -116,9 +145,7 @@ pid_t start_spice(const Configuration *C, double accuracy, double *pc, double *p
       fprintf(fp, "po[%i]=%g\n", i + 1, C->params[i].nominal);
       fprintf(fp, "pl[%i]=%d\n", i + 1, C->params[i].logs);
     }
-    char *cwd = getcwd(NULL, 0);
-    fprintf(fp, "\nsource %s/%s\n\n.endc\n", cwd, MALT_BINSEARCH_FILENAME);
-    free(cwd);
+    fprintf(fp, "\nsource %s/%s\n\n.endc\n", C->working_tree.ptr[0], MALT_BINSEARCH_FILENAME);
   }
   /* all routines */
   if (fclose(fp)) {
@@ -172,33 +199,4 @@ void call_spice(const Configuration *C, double accuracy, double *pc, double *po,
     fprintf(stderr, "malt: %s returned an error (%d)\n", C->options.spice_call_name, err);
     perror("malt");
   }
-}
-
-/* Creates SPICE input files that are used by other routines.
- *
- * Returns 0 if opening any of the files fails.
- */
-int generic_spice_files(void)
-{
-  /* create generic files even if they already exist */
-#define CREATE_FILE(name, contents, ...)                              \
-  {                                                                   \
-    FILE *fp = fopen(name, "w");                                      \
-    if (fp == NULL) {                                                 \
-      fprintf(stderr, "malt: Cannot write to the '" name "' file\n"); \
-      return 0;                                                       \
-    }                                                                 \
-    fprintf(fp, contents, ##__VA_ARGS__);                             \
-    fclose(fp);                                                       \
-  }
-
-  char *cwd = getcwd(NULL, 0);
-  CREATE_FILE(MALT_RUN_FILENAME, MALT_RUN)
-  CREATE_FILE(MALT_BINSEARCH_FILENAME, MALT_BINSEARCH, cwd)
-  CREATE_FILE(MALT_PASSFAIL_FILENAME, MALT_PASSFAIL)
-  free(cwd);
-
-#undef CREATE_FILE
-
-  return 1;
 }
