@@ -489,8 +489,14 @@ static int read_nodes(Builder *C, toml_table_t *t)
   return len_nodes;
 }
 
-static int read_parameters_table(Builder *C, toml_table_t *parameters)
+/* Read the [parameters] table from the TOML file, if present.
+ * Returns the number of parameters successfully read.  */
+static int read_parameters(Builder *C, toml_table_t *t)
 {
+  toml_table_t *parameters = toml_table_in(t, "parameters");
+  if (!parameters) {
+    return 0;
+  }
   // loop over the table entries
   int i;
   for (i = 0;; ++i) {
@@ -567,17 +573,6 @@ static int read_parameters_table(Builder *C, toml_table_t *parameters)
     }
   }
   return i;
-}
-
-/* Read the [parameters] table from the TOML file, if present.
- * Returns the number of parameters successfully read.  */
-static int read_parameters(Builder *C, toml_table_t *t)
-{
-  toml_table_t *parameters = toml_table_in(t, "parameters");
-  if (parameters) {
-    read_parameters_table(C, parameters);
-  }
-  return 0;
 }
 
 /* Reads the [extensions] table containing file extensions from the TOML file, if present.
@@ -713,25 +708,6 @@ static int try_parse_configuration(Builder *C, char *filename)
 
   toml_free(t);
 
-  return 1;
-}
-
-static int try_parse_parameters(Builder *C, char *filename)
-{
-  FILE *fp = fopen(filename, "r");
-
-  if (!fp) {
-    return 0;
-  }
-
-  char errbuf[200];
-  toml_table_t *t = toml_parse_file(fp, errbuf, sizeof errbuf);
-  fclose(fp);
-  if (!t) {
-    error("Cannot parse TOML: %s\n", errbuf);
-  }
-
-  read_parameters_table(C, t);
   return 1;
 }
 
@@ -959,29 +935,27 @@ found:
   return tree;
 }
 
-static void configure_directory(Builder *C, const char *component)
+static void configure_directory(Builder *C, char **project, char **work, const char *next_component)
 {
-  char *current = lst_last(&C->project_tree);
   char *filename = NULL;
-  // in each directory try the next component .toml (if there is a next component)
-  if (component) {
-    resprintf(&filename, "%s/%s.toml", current, component);
-    if (try_parse_configuration(C, filename)) {
-      info("Parsed configuration: '%s'\n", filename);
-    }
-    lst_push(&C->project_tree, resprintf(NULL, "%s/%s", current, component));
-    char *current_work = lst_last(&C->working_tree);
-    char *next_work = resprintf(NULL, "%s/%s", current_work, component);
-    mkdir(next_work, 0777);
-    lst_push(&C->working_tree, next_work);
+  // in each directory try the next component .toml
+  resprintf(&filename, "%s/%s.toml", *project, next_component);
+  if (try_parse_configuration(C, filename)) {
+    info("Parsed configuration: '%s'\n", filename);
   }
+  // add the directory itself to the project tree
+  lst_push(&C->project_tree, strdup(*project));
 
-  resprintf(&filename, "%s/parameters.toml", current);
-  if (try_parse_parameters(C, filename)) {
-    info("Parsed parameters: '%s'\n", filename);
-  }
+  // and create the parallel working directory, if it does not yet exist
+  mkdir(*work, 0777);
+  lst_push(&C->working_tree, strdup(*work));
 
-  free(filename);
+  // update project and working directories in a pointlessly complicated fashion
+  resprintf(&filename, "%s/%s", *project, next_component);
+  resprintf(project, "%s/%s", *work, next_component);
+  free(*work);
+  *work = *project;
+  *project = filename;
 }
 
 /* Walks *down* the directory tree from the project root to the `target`, which is presumed to be
@@ -994,19 +968,15 @@ static void configure_directory(Builder *C, const char *component)
 static void configure_target(Builder *C, list_t ptree, char *target)
 {
   assert(ptree.len > 0);
-  char *project_root = ptree.ptr[0];
 
-  // initialize project_tree and working_tree
-  lst_push(&C->project_tree, strdup(project_root));
-  // TODO: read directory name from Malt.toml
-  char *working_root = resprintf(NULL, "%s/%s", project_root, "_malt");
-  mkdir(working_root, 0777);
-  lst_push(&C->working_tree, working_root);
+  char *project_dir = strdup(ptree.ptr[0]);
+  // TODO: read working directory name from Malt.toml
+  char *working_dir = resprintf(NULL, "%s/%s", project_dir, "_malt");
 
   // 1. traverse the directories already discovered by `configure_project_root`
   for (size_t i = 1; i < ptree.len; ++i) {
     char *component = ptree.ptr[i];
-    configure_directory(C, component);
+    configure_directory(C, &project_dir, &working_dir, component);
   }
 
   // chop off the trailing .toml or .cir of *target, if present
@@ -1026,10 +996,13 @@ static void configure_target(Builder *C, list_t ptree, char *target)
       *endp = '\0';
       etc = endp + 1;
     }
-    configure_directory(C, component);
+    configure_directory(C, &project_dir, &working_dir, component);
   }
-  // one last time for the final directory (no next component)
-  configure_directory(C, NULL);
+  // one last time for the final directory with "the.toml"
+  configure_directory(C, &project_dir, &working_dir, "the");
+
+  free(project_dir);
+  free(working_dir);
   lst_drop(&ptree);
 }
 
