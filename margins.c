@@ -183,7 +183,7 @@ int margins2(Configuration *C)
   /* remove temp files */
 cleanup:
   unlink(C->file_names.iter);
-  unlink(C->file_names.pname);
+  unlink_pname(C);
   // free(S); // TODO: needed?
   free(angle);  // mem:listener
   for (i = 0; C->num_2D > i; ++i) {
@@ -230,7 +230,7 @@ cleanup:
   free(prhi);
   free(prlo);
   free(S);
-  unlink(C->file_names.pname);
+  unlink_pname(C);
   return all_good;
 }
 
@@ -248,6 +248,6 @@ int call_trace(Configuration *C)
   all_good = tmargins(C, S);
   /* clean up temporary files */
   /*cleanup:*/
-  unlink(C->file_names.pname);
+  unlink_pname(C);
   return all_good;
 }

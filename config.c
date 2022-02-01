@@ -47,6 +47,8 @@ typedef struct builder {
 
   struct file_names file_names;
 
+  bool keep_files;
+
   struct extensions extensions;
 
   struct options options;
@@ -267,6 +269,7 @@ static void builder_init(Builder *C, const Args *args, FILE *log)
   // the following fields are always initialized so that they are available for debugging:
   C->function = args->function;
   C->log = log;
+  C->keep_files = args->keep_files;
   /* initialize everything to internal defaults */
   C->has_envelope = false;
   C->project_tree = EMPTY_LIST;
@@ -872,6 +875,7 @@ void build_configuration(Configuration *C, Builder *B)
   C->function = B->function;
   C->command = "";
   C->log = B->log;
+  C->keep_files = B->keep_files;
   C->working_tree = B->working_tree;
   lst_drop(&B->project_tree);
   C->file_names = B->file_names;
@@ -1119,4 +1123,12 @@ Configuration *Configure(const Args *args, FILE *log)
   build_configuration(cfg, &B);
 
   return cfg;
+}
+
+/* Unlink C->file_names.pname, unless -k was specified on the command line. */
+void unlink_pname(Configuration *C)
+{
+  if (!C->keep_files) {
+    unlink(C->file_names.pname);
+  }
 }

@@ -368,6 +368,6 @@ cleanup:
   free(prhi);
   free(prlo);
   unlink(C->file_names.iter);
-  unlink(C->file_names.pname);
+  unlink_pname(C);
   return all_good;
 }

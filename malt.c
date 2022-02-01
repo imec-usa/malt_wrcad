@@ -16,7 +16,7 @@ void read_command_line(Args *args, int argc, char *argv[]);
 
 int main(int argc, char *argv[])
 {
-  Args args;
+  Args args = {0};
 
   /* parse command line */
   read_command_line(&args, argc, argv);
@@ -104,7 +104,7 @@ void read_command_line(Args *args, int argc, char *argv[])
   int c;
 
   /* find options and arguments */
-  while ((c = getopt(argc, argv, "hdmt2syov")) != -1) {
+  while ((c = getopt(argc, argv, "hdmt2syovk")) != -1) {
     /* have an option */
     switch (c) {
     case 'h':
@@ -126,6 +126,9 @@ void read_command_line(Args *args, int argc, char *argv[])
       break;
     case 'v':
       args->verbosity += 1;
+      break;
+    case 'k':
+      args->keep_files = true;
       break;
     case '?':
       usage();

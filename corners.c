@@ -687,7 +687,7 @@ int marg_corners(Configuration *C)
   /* remove temp files */
 cleanup:
   unlink(C->file_names.iter);
-  unlink(C->file_names.pname);
+  unlink_pname(C);
   free(S);  // mem:appal
   return (all_good);
 }

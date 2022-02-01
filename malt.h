@@ -7,6 +7,7 @@
 
 typedef struct args {
   int function;
+  bool keep_files;
   char *configuration;
   int verbosity;
 } Args;
@@ -30,18 +31,24 @@ void malt_status(FILE *, const char *, ...);
     exit(EXIT_FAILURE);                                          \
   }
 
-#define MALTUSAGE "malt [-h] {-d|-m|-t|-2|-y|-o} CONFIG\n"
+#define MALTUSAGE "malt [-h] {-d|-m|-t|-2|-y|-o} [-k] CONFIG\n"
 #define MALTVERSION "3.1-dev"
 #define MALTHELP                                                                      \
   "Malt " MALTVERSION "\n"                                                            \
   "  Parametric yield optimization utility for use with WRSpice\n"                    \
-  "Usage: " MALTUSAGE "  -h\tPrint help message and exit\n"                           \
+  "USAGE\n"                                                                           \
+  "  " MALTUSAGE "\n"                                                                 \
+  "COMMANDS\n"                                                                        \
+  "  -h\tPrint help message and exit\n"                                               \
   "  -d\tDefine correct circuit operation\n"                                          \
   "  -m\tCalculate individual parameter margins\n"                                    \
   "  -t\tTrace nodes at marginal parameter values\n"                                  \
   "  -2\tCalculate operating region in 2 dimensions\n"                                \
   "  -y\tCalculate circuit yield using corner analysis\n"                             \
   "  -o\tOptimize yield using inscribed hyperspheres\n"                               \
+  "\n"                                                                                \
+  "OPTIONS\n"                                                                         \
+  "  -k\tKeep (don't delete) additional temporary files\n"                            \
   "\n"                                                                                \
   "CONFIG\n"                                                                          \
   "  Path (relative to the current directory) of the most specific applicable\n"      \

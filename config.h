@@ -103,6 +103,8 @@ typedef struct config {
 
   int func_init;
 
+  bool keep_files;
+
   list_t working_tree;
 
   struct file_names file_names;
@@ -129,5 +131,7 @@ Configuration *Configure(const Args *args, FILE *log);
 void freeConfiguration(Configuration *C);
 
 FILE *new_file_by_type(Configuration *C, enum filetype kind);
+
+void unlink_pname(Configuration *C);
 
 #endif

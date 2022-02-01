@@ -29,7 +29,7 @@ int call_def(Configuration *C)
   /* do it */
   all_good = define(C);
   /* clean up temporary files */
-  unlink(C->file_names.pname);
+  unlink_pname(C);
   return all_good;
 }
 
