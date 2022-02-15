@@ -1,6 +1,7 @@
 Known bugs
 ==========
 
+* Tables not supported for nodes in Malt.toml
 * Malt returns 0 in most cases even when it exits due to an error
 * Most malloc'd memory is never freed (Valgrind)
 * WRspice 4.3.12 segfaults sometimes with hierarchical netlists (reported to Whitely)
@@ -8,6 +9,7 @@ Known bugs
 Fixed bugs
 ==========
 
+* Parameter values in *.call are truncated after a few digits
 * The behavior of getConfigFileList when you are not in a subdirectory of your home directory
   depends on the lexicographical ordering of your home directory relative to the current directory
 * dumpConfiguration prints some values that are uninitialized (Valgrind)

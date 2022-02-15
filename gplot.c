@@ -56,7 +56,7 @@ void plot2(Configuration *C, Space *S)
             C->params[C->_2D[i].param_y].logs ? "" : "un");
     fprintf(fp, "set xlabel '%s'\nset ylabel '%s'\n", C->params[C->_2D[i].param_x].name,
             C->params[C->_2D[i].param_y].name);
-    fprintf(fp, "set xrange [ %f: %f ]\nset yrange [ %f: %f ]\n",
+    fprintf(fp, "set xrange [ %g: %g ]\nset yrange [ %g: %g ]\n",
             physspace(C->params[C->_2D[i].param_x].min, C, C->_2D[i].param_x),
             physspace(C->params[C->_2D[i].param_x].max, C, C->_2D[i].param_x),
             physspace(C->params[C->_2D[i].param_y].min, C, C->_2D[i].param_y),

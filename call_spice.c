@@ -91,28 +91,28 @@ pid_t start_spice(const Configuration *C, double accuracy, double *pc, double *p
     fprintf(fp, "set n_return  = ( %s.nom )\n", C->command);
     /* nominal parameter values */
     for (i = 0; C->num_params_all > i; ++i)
-      fprintf(fp, "param[%i]=%f\n", i + 1, C->params[i].nominal);
+      fprintf(fp, "param[%i]=%g\n", i + 1, C->params[i].nominal);
     fprintf(fp, "\nsource .malt.run\n\n.endc\n");
   } else {
     fprintf(fp, "set envelope = ( %s. )\n", C->file_names.envelope);
     /* binary search limits stuff */
-    fprintf(fp, "pc[0]=0\npo[0]=%f\n", accuracy);
+    fprintf(fp, "pc[0]=0\npo[0]=%g\n", accuracy);
     /* pc on plane, po on the boundary */
     for (i = 0; C->num_params > i; ++i) {
-      fprintf(fp, "pc[%i]=%f\n", i + 1, physspace(pc[i], C, i));
-      fprintf(fp, "po[%i]=%f\n", i + 1, physspace(po[i], C, i));
+      fprintf(fp, "pc[%i]=%g\n", i + 1, physspace(pc[i], C, i));
+      fprintf(fp, "po[%i]=%g\n", i + 1, physspace(po[i], C, i));
       fprintf(fp, "pl[%i]=%d\n", i + 1, C->params[i].logs);
     }
     /* tack on the corner parameters */
     for (; (C->num_params + C->num_params_corn) > i; ++i) {
-      fprintf(fp, "pc[%i]=%f\n", i + 1, physspace(pc[i], C, i));
-      fprintf(fp, "po[%i]=%f\n", i + 1, physspace(pc[i], C, i));
+      fprintf(fp, "pc[%i]=%g\n", i + 1, physspace(pc[i], C, i));
+      fprintf(fp, "po[%i]=%g\n", i + 1, physspace(pc[i], C, i));
       fprintf(fp, "pl[%i]=%d\n", i + 1, C->params[i].logs);
     }
     /* tack on the excluded parameters */
     for (; C->num_params_all > i; ++i) {
-      fprintf(fp, "pc[%i]=%f\n", i + 1, C->params[i].nominal);
-      fprintf(fp, "po[%i]=%f\n", i + 1, C->params[i].nominal);
+      fprintf(fp, "pc[%i]=%g\n", i + 1, C->params[i].nominal);
+      fprintf(fp, "po[%i]=%g\n", i + 1, C->params[i].nominal);
       fprintf(fp, "pl[%i]=%d\n", i + 1, C->params[i].logs);
     }
     fprintf(fp, "\nsource .malt.binsearch\n\n.endc\n");
