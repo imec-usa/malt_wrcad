@@ -4,7 +4,12 @@ Known bugs
 * Tables not supported for nodes in Malt.toml
 * Malt returns 0 in most cases even when it exits due to an error
 * Most malloc'd memory is never freed (Valgrind)
-* WRspice 4.3.12 segfaults sometimes with hierarchical netlists (reported to Whitely)
+
+Planned improvements
+====================
+
+* Emit nominal-only parameters in generated .toml files
+* Emit relocatable (relative) paths in generated spice files
 
 Fixed bugs
 ==========

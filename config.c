@@ -524,6 +524,8 @@ static int read_parameters(Builder *C, toml_table_t *t)
     }
 
     // populate/overwrite C->params[n] with the contents of `values`
+    //free(C->params[n].name);
+    C->params[n] = PARAM_DEFAULT;
     // parameter name:
     C->params[n].name = strdup(parameter);  // mem:reminiscer
 
@@ -535,6 +537,7 @@ static int read_parameters(Builder *C, toml_table_t *t)
       // make maltspace happy
       C->params[n].logs = false;
       C->params[n].sigabs = 1.0;
+      C->params[n].sigma = 0.0;
       continue;
     }
 
@@ -569,8 +572,10 @@ static int read_parameters(Builder *C, toml_table_t *t)
     toml_datum_t sigabs = toml_double_in(values, "sig_abs");
     if (sigma.ok && !sigabs.ok) {
       C->params[n].sigma = sigma.u.d;
+      C->params[n].sigabs = 0.0;
     } else if (sigabs.ok && !sigma.ok) {
       C->params[n].sigabs = sigabs.u.d;
+      C->params[n].sigma = 0.0;
     } else if (C->params[n].include) {
       error("Parameter '%s' must have exactly one of sigma or sig_abs\n", parameter);
       return 0;
