@@ -69,10 +69,10 @@ static void builder_debug(const Builder *B, FILE *fp)
   fprintf(fp, "nominal = %g\n", B->param_defaults.nominal);
   fprintf(fp, "min = %g\n", B->param_defaults.min);
   fprintf(fp, "max = %g\n", B->param_defaults.max);
-  /* by default, both sigma and sig_abs are zero. but one-and-only-one must be non-zero in the end
+  /* by default, both sig_pct and sigma are zero. but one-and-only-one must be non-zero in the end
    */
+  fprintf(fp, "sig_pct = %g\n", B->param_defaults.sig_pct);
   fprintf(fp, "sigma = %g\n", B->param_defaults.sigma);
-  fprintf(fp, "sig_abs = %g\n", B->param_defaults.sigabs);
   fprintf(fp, "static = %d\n", B->param_defaults.staticc);
   fprintf(fp, "logs = %d\n", B->param_defaults.logs);
   fprintf(fp, "corners = %d\n", B->param_defaults.corners);
@@ -83,10 +83,10 @@ static void builder_debug(const Builder *B, FILE *fp)
   fprintf(fp, "\n***  Circuit Parameters  ***\n");
   for (i = 0; i < B->num_params_all; ++i) {
     fprintf(fp,
-            "param = %s, nominal = %g, min = %g, max = %g, sigma = %g, "
-            "sig_abs = %g, static = %d, logs = %d, corners = %d, include = %d",
+            "param = %s, nominal = %g, min = %g, max = %g, sig_pct = %g, "
+            "sigma = %g, static = %d, logs = %d, corners = %d, include = %d",
             B->params[i].name, B->params[i].nominal, B->params[i].min, B->params[i].max,
-            B->params[i].sigma, B->params[i].sigabs, B->params[i].staticc, B->params[i].logs,
+            B->params[i].sig_pct, B->params[i].sigma, B->params[i].staticc, B->params[i].logs,
             B->params[i].corners, B->params[i].include);
     if (B->params[i].isnommin)
       fprintf(fp, ", nom_min = %g", B->params[i].nom_min);
@@ -114,7 +114,7 @@ static void builder_debug(const Builder *B, FILE *fp)
   if (B->extensions.plot)
     fprintf(fp, "plot_extension = %s\n", B->extensions.plot);
   fprintf(fp, "\n***  General Options  ***\n");
-  fprintf(fp, "*fraction of sigma:\nbinsearch_accuracy = %g\n", B->options.binsearch_accuracy);
+  fprintf(fp, "*fraction of sig_pct:\nbinsearch_accuracy = %g\n", B->options.binsearch_accuracy);
   if (B->options.spice_call_name)
     fprintf(fp, "spice_call_name = %s\n", B->options.spice_call_name);
   fprintf(fp, "max_subprocesses = %d\n", B->options.max_subprocesses);
@@ -130,8 +130,8 @@ static void builder_debug(const Builder *B, FILE *fp)
   /* TODO not yet supported
   fprintf(fp,"\n***  Options for 2D Shmoo  ***\n");
   */
-  fprintf(fp, "\n***  Options for Corners Yield  ***\n");
-  fprintf(fp, "***  ranges: 0-10, 0-9, 1-40\n");
+  fprintf(fp, "\n***  Options for Yield  ***\n");
+  fprintf(fp, "***  ranges: 0-30, 0-9, 1-40\n");
   fprintf(fp, "y_search_depth = %d\n", B->options.y_search_depth);
   fprintf(fp, "y_search_width  = %d\n", B->options.y_search_width);
   fprintf(fp, "y_search_steps  = %d\n", B->options.y_search_steps);
@@ -224,8 +224,8 @@ void builder_init(Builder *C)
   /* parameter defaults */
   C->param_defaults.name = NULL;
   C->param_defaults.nominal = 1;
+  C->param_defaults.sig_pct = 0.0;
   C->param_defaults.sigma = 0.0;
-  C->param_defaults.sigabs = 0.0;
   C->param_defaults.min = 0.5;
   C->param_defaults.max = 2;
   C->param_defaults.top_min = 0;
@@ -441,8 +441,8 @@ int compositLine(Builder *C, ConfigLine *L)
       /* overwrite a pre-existing param or write to a new param */
       C->params[this_num].name = strdup(L->value[i]);  // mem:reminiscer
       C->params[this_num].nominal = C->param_defaults.nominal;
+      C->params[this_num].sig_pct = C->param_defaults.sig_pct;
       C->params[this_num].sigma = C->param_defaults.sigma;
-      C->params[this_num].sigabs = C->param_defaults.sigabs;
       C->params[this_num].min = C->param_defaults.min;
       C->params[this_num].max = C->param_defaults.max;
       C->params[this_num].top_min = C->param_defaults.top_min;
@@ -459,10 +459,10 @@ int compositLine(Builder *C, ConfigLine *L)
           ;
         else if (!strcasecmp(L->key[j], "nominal"))
           C->params[this_num].nominal = atof(L->value[j]);
+        else if (!strcasecmp(L->key[j], "sig_pct"))
+          C->params[this_num].sig_pct = atof(L->value[j]);
         else if (!strcasecmp(L->key[j], "sigma"))
           C->params[this_num].sigma = atof(L->value[j]);
-        else if (!strcasecmp(L->key[j], "sig_abs"))
-          C->params[this_num].sigabs = atof(L->value[j]);
         else if (!strcasecmp(L->key[j], "min")) {
           C->params[this_num].min = atof(L->value[j]);
           C->params[this_num].top_min = 1;
@@ -568,7 +568,7 @@ int simpleLine(Builder *C, ConfigLine *L)
   /* options for 2D margins */
   else if (!strcasecmp(L->key[0], "2D_iter"))
     C->options._2D_iter = atoi(L->value[0]);
-  /* options for corners yield */
+  /* options for yield */
   else if (!strcasecmp(L->key[0], "y_search_depth"))
     C->options.y_search_depth = atoi(L->value[0]);
   else if (!strcasecmp(L->key[0], "y_search_width"))
@@ -595,10 +595,10 @@ int simpleLine(Builder *C, ConfigLine *L)
   /* parameter defaults */
   else if (!strcasecmp(L->key[0], "nominal"))
     C->param_defaults.nominal = atof(L->value[0]);
+  else if (!strcasecmp(L->key[0], "sig_pct"))
+    C->param_defaults.sig_pct = atof(L->value[0]);
   else if (!strcasecmp(L->key[0], "sigma"))
     C->param_defaults.sigma = atof(L->value[0]);
-  else if (!strcasecmp(L->key[0], "sig_abs"))
-    C->param_defaults.sigabs = atof(L->value[0]);
   else if (!strcasecmp(L->key[0], "min"))
     C->param_defaults.min = atof(L->value[0]);
   else if (!strcasecmp(L->key[0], "max"))

@@ -18,8 +18,8 @@ typedef struct param {
   /* configurable */
   const char *name;
   double nominal;
+  double sig_pct;
   double sigma;
-  double sigabs;
   double min;
   double max;
   int top_min;

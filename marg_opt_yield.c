@@ -368,7 +368,7 @@ int margins(Configuration *C, const Space *S, double *prhi, double *prlo)
   /* Names & Nominals */
   for (i = 0; i < N + K; i++) {
     lprintf(C, "%3d) %-19.19s %8.3f %8.4f %4d  ", i + 1, C->params[i].name,
-            physspace(S[i].centerpnt, C, i), C->params[i].sigabs, C->params[i].logs ? 1 : 0);
+            physspace(S[i].centerpnt, C, i), C->params[i].sigma, C->params[i].logs ? 1 : 0);
     if (C->params[i].corners) {
       lprintf(C, "%8.3f %8.3f\n", physspace(S[i].cornerlo, C, i), physspace(S[i].cornerhi, C, i));
     } else {
