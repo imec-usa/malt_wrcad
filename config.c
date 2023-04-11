@@ -24,8 +24,8 @@
 static const Param PARAM_DEFAULT = {
     .name = NULL,
     .nominal = 1,
+    .sig_pct = 0.0,
     .sigma = 0.0,
-    .sigabs = 0.0,
     .min = 0.5,
     .max = 2.0,
     .top_min = 0,
@@ -121,10 +121,10 @@ static void builder_debug(const Builder *B, FILE *fp)
 
   brk();
   comment("Circuit parameters");
-  comment("Defaults: nominal = %g, min = %g, max = %g, sigma = %g, sig_abs = %g, static = %s, logs "
+  comment("Defaults: nominal = %g, min = %g, max = %g, sig_pct = %g, sigma = %g, static = %s, logs "
           "= %s, corners = %s, include = %s",
-          PARAM_DEFAULT.nominal, PARAM_DEFAULT.min, PARAM_DEFAULT.max, PARAM_DEFAULT.sigma,
-          PARAM_DEFAULT.sigabs, PARAM_DEFAULT.staticc ? "true" : "false",
+          PARAM_DEFAULT.nominal, PARAM_DEFAULT.min, PARAM_DEFAULT.max, PARAM_DEFAULT.sig_pct,
+          PARAM_DEFAULT.sigma, PARAM_DEFAULT.staticc ? "true" : "false",
           PARAM_DEFAULT.logs ? "true" : "false", PARAM_DEFAULT.corners ? "true" : "false",
           PARAM_DEFAULT.include ? "true" : "false");
   section("parameters");
@@ -134,10 +134,10 @@ static void builder_debug(const Builder *B, FILE *fp)
       fprintf(fp, ", min = %g", B->params[i].min);
     if (B->params[i].top_max)
       fprintf(fp, ", max = %g", B->params[i].max);
+    if (B->params[i].sig_pct != 0.0)
+      fprintf(fp, ", sig_pct = %g", B->params[i].sig_pct);
     if (B->params[i].sigma != 0.0)
       fprintf(fp, ", sigma = %g", B->params[i].sigma);
-    if (B->params[i].sigabs != 0.0)
-      fprintf(fp, ", sig_abs = %g", B->params[i].sigabs);
     if (B->params[i].staticc != PARAM_DEFAULT.staticc)
       fprintf(fp, ", static = %s", B->params[i].staticc ? "true" : "false");
     if (B->params[i].isnommin)
@@ -536,8 +536,8 @@ static int read_parameters(Builder *C, toml_table_t *t)
       C->params[n].include = false;
       // make maltspace happy
       C->params[n].logs = false;
-      C->params[n].sigabs = 1.0;
-      C->params[n].sigma = 0.0;
+      C->params[n].sigma = 1.0;
+      C->params[n].sig_pct = 0.0;
       continue;
     }
 
@@ -566,18 +566,18 @@ static int read_parameters(Builder *C, toml_table_t *t)
     read_a_bool(&C->params[n].logs, values, "logs");
     read_a_bool(&C->params[n].corners, values, "corners");
 
-    // sigma, sigabs (exactly 1 required for included parameters):
+    // sig_pct, sigma (exactly 1 required for included parameters):
     // TODO: parse a subtable {percent = 5} or whatever
+    toml_datum_t sig_pct = toml_double_in(values, "sig_pct");
     toml_datum_t sigma = toml_double_in(values, "sigma");
-    toml_datum_t sigabs = toml_double_in(values, "sig_abs");
-    if (sigma.ok && !sigabs.ok) {
-      C->params[n].sigma = sigma.u.d;
-      C->params[n].sigabs = 0.0;
-    } else if (sigabs.ok && !sigma.ok) {
-      C->params[n].sigabs = sigabs.u.d;
+    if (sig_pct.ok && !sigma.ok) {
+      C->params[n].sig_pct = sig_pct.u.d;
       C->params[n].sigma = 0.0;
+    } else if (sigma.ok && !sig_pct.ok) {
+      C->params[n].sigma = sigma.u.d;
+      C->params[n].sig_pct = 0.0;
     } else if (C->params[n].include) {
-      error("Parameter '%s' must have exactly one of sigma or sig_abs\n", parameter);
+      error("Parameter '%s' must have exactly one of sig_pct or sigma\n", parameter);
       return 0;
     }
   }
@@ -1077,6 +1077,8 @@ Configuration *Configure(const Args *args, FILE *log)
     }
     builder_debug(&B, fp);
     fclose(fp);
+    // push . to ptree
+    lst_push(&ptree, strdup("."));
   }
 
   // 2. Parse all other .toml files between project root and target

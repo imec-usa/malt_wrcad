@@ -18,7 +18,6 @@
 #define STEPS (C->options.y_search_steps)
 #define PAGE_LINES 8192  // simplex memory page size, with 8ish bytes per line
 
-static int chopm(Configuration *, const Space *, int *, int, double);
 static double big_dist(int, double **, short *, int *, int *);
 static void bord(int, int, int *);
 static void norm_v(int, double *);
@@ -131,8 +130,8 @@ fail:
   return ret;
 }
 
-static int cropc(Configuration *C, const Space *S, int ord, double *cmarg, int *bin,
-                 const double *prhi, const double *prlo)
+static int cropc(Configuration *C, const Space *S, double *cmarg, int *bin, const double *prhi,
+                 const double *prlo)
 {
   int i, j, k, m;
   int num_vect, newv, max_num_vect, num_vect_stride, num_vect_step, anneal_iter, finish_iter;
@@ -140,7 +139,7 @@ static int cropc(Configuration *C, const Space *S, int ord, double *cmarg, int *
   int mem_vect = 0, inc_vect;
   int mem_simp, inc_simp, mem_simp_pages = 0, inc_simp_pages;
   int mypage, mod_mypage, mylines;
-  int stepping = 1, stop = 0, warn = 0;
+  int stepping = 1, stop = 0;
   int big1, big2, tbig1, tbig2, ibig, jbig, j1, j2, r, rxn, nm1 = N - 1;
   double f, g, itmax, itmin;
   double ave, sigma, biggest, temp;
@@ -227,8 +226,6 @@ static int cropc(Configuration *C, const Space *S, int ord, double *cmarg, int *
     g = prhi[j] - S[j].centerpnt;
     marg[2 * j] = f;
     marg[2 * j + 1] = g;
-    if ((f < cmarg[ord]) || (g < cmarg[ord]))
-      warn = 1;
     gmarg[2 * j] = gauss_integral_c(f, N);  // gauss integral thereof
     gmarg[2 * j + 1] = gauss_integral_c(g, N);
   }
@@ -309,10 +306,6 @@ static int cropc(Configuration *C, const Space *S, int ord, double *cmarg, int *
   }
   ave = tm / av;
   sigma = sqrt(tv) / av;
-  /* warn if an on-axis margin is more critical than the most critical corner vector */
-  if (warn) {
-    lprintf(C, "\nThe critical 1D margin is smaller than the critical corner-vector margin\n");
-  }
   /* print initial values */
   lprintf(C, "\nIntegrate over the quadrants for at least %d iterations\n",
           anneal_iter + finish_iter);
@@ -622,9 +615,9 @@ int marg_corners(Configuration *C)
   double *prhi = malloc(N * sizeof *prhi);
 
   /* Exceptions */
-  if (DEPTH < 0 || DEPTH > 10) {
-    lprintf(C, "y_search_depth = %d outside of allowed range [0 to 10]\nResetting to 5\n", DEPTH);
-    DEPTH = 5;
+  if (DEPTH < 0 || DEPTH > 30) {
+    lprintf(C, "y_search_depth = %d outside of allowed range [0 to 30]\nResetting to 10\n", DEPTH);
+    DEPTH = 10;
   }
   if (WIDTH < 0 || WIDTH > 9) {
     lprintf(C, "y_search_width = %d outside of allowed range [0 to 9]\nResetting to 5\n", WIDTH);
@@ -670,17 +663,12 @@ int marg_corners(Configuration *C)
       jc = i;
     }
   }
-  /* remove the parameters one-at-a-time to make sure you have included enough of them */
-  if (!chopm(C, S, bin, jc, cmarg[jc])) {
-    all_good = 0;
-    goto cleanup;
-  }
   /* integrate over the quadrants all together to calculate yield */
   if (N == 1) {
     /* don't call cropc if num_params = 1 */
     lprintf(C, "Only one included parameter. Nothing more to do here.\n");
     goto cleanup;
-  } else if (!cropc(C, S, jc, cmarg, bin, prhi, prlo)) {  // passing in jc for warning purposes
+  } else if (!cropc(C, S, cmarg, bin, prhi, prlo)) {
     all_good = 0;
     goto cleanup;
   }
@@ -690,90 +678,6 @@ cleanup:
   unlink_pname(C);
   free(S);  // mem:appal
   return (all_good);
-}
-
-static int chopm(Configuration *C, const Space *S, int *bin, int crit, double cmarg)
-{
-  int i, j, k;
-  int ret = 0, ndim;
-  double margn, margnold, depend;
-  double *pc =
-      malloc((N + C->num_params_corn) * sizeof *pc);  // Trent's innovation for dynamic storage
-  double *direction = malloc(N * sizeof *direction);
-  int *here = malloc(N * sizeof *here);
-  double *mymarg = malloc(N * sizeof *mymarg);
-
-  lprintf(C, "\nSuccessive parameter exclusion analysis for vector index %d\n", crit);
-  /* re-print the margin with no paramters removed */
-  lprintf(C, "Removed_parameter   Dimension   M/sqrt(N)   Dependency\n");
-  margnold = cmarg / sqrt(N);  // initializing it for forward analysis
-  lprintf(C, " 0) NULL            %2d %14.2f        NULL\n", N, margnold);
-  /* convert the iteration number to the binary bin vector */
-  bord(N, crit, bin);
-  for (k = 0; N > k; k++)
-    here[k] = 1;  // initialize: all params included
-  /* wind down the number of parameters left, like bottles of beer on the wall */
-  for (k = 1; N > k; k++) {
-    /* remove each parameter in turn, then permanently remove the one with least effect */
-    for (j = 0; N > j; j++) {
-      if (here[j]) {  // it is still here if it is not permanently gone already
-        here[j] = 0;  // removing it temporarily
-        /* take the margin */
-        for (i = 0; N > i; i++) {
-          pc[i] = S[i].centerpnt;  // initialize
-          if (here[i]) {
-            direction[i] = (bin[i]) ? -0.5 : 0.5;  // direction is negative-wise!!
-          } else {
-            direction[i] = 0.0;  // direction is zero if the parameter is not here
-          }
-        }
-        norm_v(N, direction); /* normalize it, possibly for no reason */
-        /* a local vector to store this */
-        if ((mymarg[j] = addpoint_corners(C, S, NULL, NULL, pc, direction)) == 0.0) {
-          fprintf(stderr, "Circuit failed for nominal parameter values\n");
-          goto fail;
-        }
-        here[j] = 1;  // unwind removing it temporarily
-      }
-    }
-    /* initialize to the first still-here parameter */
-    for (j = 0; N > j; j++) {
-      if (here[j]) {
-        break;
-      }
-    }
-    int smallj = j;
-    double smallmymarg = mymarg[j];
-    /* find the still-here parameter with the smallest my_marg */
-    for (j++; N > j; j++) {
-      if (here[j] && (smallmymarg > mymarg[j])) {
-        smallmymarg = mymarg[j];
-        smallj = j;
-      }
-    }
-    here[smallj] =
-        0; /* permanently remove the parameter with the smallest my_marg = smallest effect */
-    /* lprint result of who gets removed permanently */
-    ndim = N - k;
-    margn = smallmymarg / sqrt(ndim);
-    depend = (1.0 - margnold / margn) / (1.0 - (double)ndim / (double)(ndim + 1));
-    /* just for asthetic purposes cause only binsearch accuracy could drive it negative */
-    if (depend < 0.0)
-      depend = 0.0;
-    lprintf(C, "%2d) %-15s %2d %14.2f %10.0f%%\n", smallj + 1, C->params[smallj].name, ndim, margn,
-            100.0 * depend);
-    margnold = margn;
-    /* it gets increasing meaning less as the paramers wind down, so stop it */
-    if (depend > 0.4) {
-      break;
-    }
-  }
-  /* done. drop this line of inquiry and move on */
-  ret = 1;  // you didn't fail!
-fail:
-  /* free(here); */
-  /* free(mymarg); */
-  return ret;
 }
 
 /* integrate over all quadrants to determine yield */
