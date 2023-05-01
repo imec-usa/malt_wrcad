@@ -1,0 +1,172 @@
+#!/bin/env python3
+import argparse
+from collections import defaultdict
+import pathlib
+import re
+import pprint
+import toml
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Translate a malt.config file to TOML")
+    parser.add_argument("filename", type=pathlib.Path, help="The input (.config) file")
+    parser.add_argument("-o", "--output", type=pathlib.Path, help="The output (.toml) file")
+    return parser.parse_args()
+
+def parse_file(filename):
+    comment = re.compile(r"[*#%;].*")
+    comma = re.compile(r"\s*,\s*")
+    equal = re.compile(r"\s*=\s*")
+    result = []
+    with open(filename) as fp:
+        for line in fp:
+            # strip comments and trailing newline
+            line = comment.sub("", line.rstrip("\n"))
+            # skip empty lines
+            if not line or line.isspace():
+                continue
+            # split by commas
+            pairs = comma.split(line)
+            # add key-value pairs
+            linedata = {}
+            for pair in pairs:
+                key, value = equal.split(pair, 1)
+                linedata[key] = value
+            result.append(linedata)
+    return result
+    
+class InlineDict(dict, toml.encoder.InlineTableDict):
+    pass
+
+def bool_int(s: str) -> bool:
+    return bool(int(s))
+
+class MaltConfig(defaultdict):
+    _key_types = defaultdict(lambda: str, {
+        "2D_iter":            int,
+        "binsearch_accuracy": float,
+        "d_envelope":         bool_int,
+        "d_simulate":         bool_int,
+        "dt":                 float,
+        "dx":                 float,
+        "max_subprocesses":   int,
+        "threads":            int,
+        "verbose":            bool_int,
+        "o_max_mem_k":        int,
+        "o_min_iter":         int,
+        "print_terminal":     bool_int,
+        "nominal":            float,
+        "max":                float,
+        "min":                float,
+        "nom_max":            float,
+        "nom_min":            float,
+        "sig_pct":            float,
+        "sigma":              float,
+        "logs":               bool_int,
+        "include":            bool_int,
+        "corners":            bool_int,
+        "static":             bool_int,
+        "y_search_depth":     int,
+        "y_search_width":     int,
+        "y_search_steps":     int,
+        "y_max_mem_k":        int,
+        "y_accuracy":         int,
+        "y_print_every":      bool_int,
+    })
+    _node_defaults = {
+        "dt": 100e-12,
+        "dx": 1.0,
+    }
+    # taken from config.c PARAM_DEFAULT:
+    _param_defaults = {
+        # None items should always be printed even if default value
+        "nominal":  None, # 1
+        "min":      None, # 0.5
+        "max":      None, # 2.0
+        "sig_pct":  0.0,
+        "sigma":    0.0,
+        "logs":     True,
+        "include":  True,
+        "corners":  False,
+        "static":   False,
+    }
+    _extensions = {k + "_extension": k for k in "circuit parameters passfail envelope plot".split()}
+    _envelope = {"dt", "dx"}
+    _xy = {"2D_iter": "iterations"}
+    def __init__(self):
+        super().__init__(dict)
+        self["nodes"] = []
+        self._legacy_defaults = {}
+    def set_simple(self, key, value):
+        value = self._key_types[key](value)
+        if key.startswith("d_"):
+            self["define"][key[2:]] = value
+        elif key in self._envelope:
+            self["envelope"][key] = value
+        elif key in self._extensions:
+            self["extensions"][self._extensions[key]] = value
+        elif key.startswith("o_"):
+            self["optimize"][key[2:]] = value
+        elif key in self._xy:
+            self["xy"][self._xy[key]] = value
+        elif key.startswith("y_"):
+            self["yield"][key[2:]] = value
+        elif key in self._param_defaults:
+            self._legacy_defaults[key] = value
+        elif key == "sig_abs":
+            raise Exception("Obsolete malt.config key sig_abs, use sigma/sig_pct instead!")
+        else:
+            self[key] = value
+    def add_node(self, node_data):
+        node_data = InlineDict(node_data)
+        node_name = node_data["node"]
+        for k, default in self._node_defaults.items():
+            if k in node_data:
+                value = self._key_types[k](node_data[k])
+                # note the difference here with param_data:
+                if value == self.get(k, default):
+                    # don't save previously non-defaulted default values
+                    del node_data[k]
+                else:
+                    # previously non-defaulted, non-default values:
+                    # transform strings into whatever
+                    node_data[k] = value
+            # do nothing for previously defaulted values, since they are still defaulted
+        if len(node_data) == 1:
+            self["nodes"].append(node_name)
+        else:
+            self["nodes"].append(node_data)
+    def add_param(self, param_data):
+        param_data = InlineDict(param_data)
+        param_name = param_data["param"]
+        del param_data["param"]
+        for k, default in self._param_defaults.items():
+            if k in param_data:
+                value = self._key_types[k](param_data[k])
+                if value == default:
+                    # don't save previously non-defaulted default values
+                    del param_data[k]
+                else:
+                    # previously non-defaulted, non-default values:
+                    # transform strings into whatever
+                    param_data[k] = value
+            else:
+                legacy_default = self._legacy_defaults.get(k)
+                if default is None or legacy_default is not None and legacy_default != default:
+                    # do save previously defaulted non-default values
+                    param_data[k] = self._legacy_defaults[k]
+                # do nothing for previously defaulted default values
+        self["parameters"][param_name] = param_data
+
+if __name__ == "__main__":
+    args = parse_args()
+    config = parse_file(args.filename)
+    data = MaltConfig()
+    for line in config:
+        if "node" in line:
+            data.add_node(line)
+        elif "param" in line:
+            data.add_param(line)
+        else:
+            for key, value in line.items():
+                data.set_simple(key, value)
+    print(toml.dumps(dict(data), encoder=toml.encoder.TomlPreserveInlineDictEncoder()))
