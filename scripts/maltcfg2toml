@@ -136,6 +136,8 @@ class MaltConfig(defaultdict):
         else:
             self["nodes"].append(node_data)
     def add_param(self, param_data):
+        if "sig_abs" in param_data:
+            raise Exception("Obsolete malt.config key sig_abs, use sigma/sig_pct instead!")
         param_data = InlineDict(param_data)
         param_name = param_data["param"]
         del param_data["param"]
@@ -169,4 +171,8 @@ if __name__ == "__main__":
         else:
             for key, value in line.items():
                 data.set_simple(key, value)
-    print(toml.dumps(dict(data), encoder=toml.encoder.TomlPreserveInlineDictEncoder()))
+    if args.output:
+        with open(args.output, "w") as fp:
+            print(toml.dumps(dict(data), encoder=toml.encoder.TomlPreserveInlineDictEncoder()), file=fp)
+    else:
+        print(toml.dumps(dict(data), encoder=toml.encoder.TomlPreserveInlineDictEncoder()))
