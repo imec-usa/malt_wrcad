@@ -576,8 +576,8 @@ static int read_parameters(Builder *C, toml_table_t *t)
     } else if (sigma.ok && !sig_pct.ok) {
       C->params[n].sigma = sigma.u.d;
       C->params[n].sig_pct = 0.0;
-    } else if (C->params[n].include) {
-      error("Parameter '%s' must have exactly one of sig_pct or sigma\n", parameter);
+    } else if (C->params[n].include && !C->params[n].corners) {
+      error("Non-corner parameter '%s' must have exactly one of sig_pct or sigma\n", parameter);
       return 0;
     }
   }
