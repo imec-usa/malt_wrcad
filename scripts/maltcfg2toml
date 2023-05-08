@@ -4,6 +4,7 @@ from collections import defaultdict
 import pathlib
 import re
 import pprint
+import sys
 import toml
 
 def parse_args():
@@ -91,7 +92,9 @@ class MaltConfig(defaultdict):
     }
     _extensions = {k + "_extension": k for k in "circuit parameters passfail envelope plot".split()}
     _envelope = {"dt", "dx"}
+    _simulator = {"spice_call_name": "command", "max_subprocesses": "max_subprocesses", "verbose": "verbose"}
     _xy = {"2D_iter": "iterations"}
+    _deprecated = {"threads",}
     def __init__(self):
         super().__init__(dict)
         self["nodes"] = []
@@ -106,10 +109,14 @@ class MaltConfig(defaultdict):
             self["extensions"][self._extensions[key]] = value
         elif key.startswith("o_"):
             self["optimize"][key[2:]] = value
+        elif key in self._simulator:
+            self["simulator"][self._simulator[key]] = value
         elif key in self._xy:
             self["xy"][self._xy[key]] = value
         elif key.startswith("y_"):
             self["yield"][key[2:]] = value
+        elif key in self._deprecated:
+            print(f"Skipping deprecated/ignored option {key!r}", file=sys.stderr)
         elif key in self._param_defaults:
             self._legacy_defaults[key] = value
         elif key == "sig_abs":
