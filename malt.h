@@ -32,7 +32,7 @@ void malt_status(FILE *, const char *, ...);
   }
 
 #define MALTUSAGE "malt [-h] {-d|-m|-t|-2|-y|-o} [-k] CONFIG\n"
-#define MALTVERSION "3.1-dev"
+#define MALTVERSION "3.2"
 #define MALTHELP                                                                      \
   "Malt " MALTVERSION "\n"                                                            \
   "  Parametric yield optimization utility for use with WRSpice\n"                    \
