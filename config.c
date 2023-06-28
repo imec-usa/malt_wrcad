@@ -89,22 +89,24 @@ static void builder_debug(const Builder *B, FILE *fp)
   comment("(These options must precede any [section] in this file)");
   key_val("binsearch_accuracy", "%g  # fraction of sigma", B->options.binsearch_accuracy);
   key_val("print_terminal", "%s", B->options.print_terminal ? "true" : "false");
-  comment("Nodes may be specified as strings or tables.");
-  comment("If dx or dt is not provided, [envelope] will be used instead.");
-  comment("Example:");
-  comment("nodes = [\"v(phi.node0)\", { node = \"v(phi.node1)\", dt = 1e-10, dx = 1.0 }]");
-  fprintf(fp, "nodes = [");
+
+  brk();
+  comment("Nodes");
+  section("nodes");
+  comment("Node names with embedded punctuation should be enclosed in double quotes.");
+  comment("dx, dt may be specified here per node or globally in [envelope]");
+  comment("Examples:");
+  comment("'v(phi.node0)' = {}");
+  comment("'v(phi.node1)' = { dt = 1e-10, dx = 1.0 }]");
   for (int i = 0; i < B->num_nodes; ++i) {
     if (B->nodes[i].dt == B->node_defaults.dt && B->nodes[i].dx == B->node_defaults.dx) {
-      // string
-      fprintf(fp, "\n  '%s',", B->nodes[i].name);
+      // empty table
+      fprintf(fp, "'%s' = {}", B->nodes[i].name);
     } else {
       // inline table
-      fprintf(fp, "\n  {node = '%s', dt = %g, dx = %g},", B->nodes[i].name, B->nodes[i].dt,
-              B->nodes[i].dx);
+      fprintf(fp, "'%s' = { dt = %g, dx = %g }", B->nodes[i].name, B->nodes[i].dt, B->nodes[i].dx);
     }
   }
-  fprintf(fp, "%s]\n", B->num_nodes == 0 ? "" : "\n");
 
   brk();
   comment("Simulator options");
@@ -400,7 +402,7 @@ static bool keys_ok(Builder *C, toml_table_t *t, ...)
     va_list argv;
     va_start(argv, t);
     for (;;) {
-      char *arg = va_arg(argv, const char *);
+      const char *arg = va_arg(argv, const char *);
       if (!arg) {
         // this key was not found in the arguments list
         break;
@@ -448,45 +450,60 @@ static int read_envelope(Builder *C, toml_table_t *t)
          read_a_double(&C->node_defaults.dt, envelope, "dt");
 }
 
-/* Read the `nodes` list from the top level of the toml file. Also reads [envelope] if nodes are
+/* Read the `nodes` table from the top level of the toml file. Also reads [envelope] if nodes are
  * present.
  * Returns the number of nodes successfully read. */
 static int read_nodes(Builder *C, toml_table_t *t)
 {
   int len_nodes = 0;
   C->has_envelope |= read_envelope(C, t);
-  toml_array_t *nodes = toml_array_in(t, "nodes");
+  toml_table_t *nodes = toml_table_in(t, "nodes");
   if (nodes) {
     // nodes are present: [envelope] must be too, for defaults
     if (!C->has_envelope) {
-      error("Missing [envelope] in TOML file containing nodes list\n");
+      error("Missing [envelope] in TOML file containing nodes table\n");
     }
-    len_nodes = toml_array_nelem(nodes);
+    len_nodes = toml_table_nkval(nodes);
     // overwrite nodes if already specified by earlier configurations
     // FIXME: clobbering leaks memory for .name
     C->nodes = realloc(C->nodes, len_nodes * sizeof *C->nodes);
     if (C->num_nodes != 0) {
-      warn("Overwriting previously configured node list\n");
+      warn("Overwriting previously configured nodes\n");
     }
     C->num_nodes = len_nodes;
     for (int n = 0; n < len_nodes; ++n) {
-      toml_datum_t node = toml_string_at(nodes, n);  // mem:sunglow
-      if (node.ok) {
-        // node is a string; we will use the provided envelope settings
-        // add this node to the configuration
-        C->nodes[n].name = node.u.s;
-        C->nodes[n].units = C->node_defaults.units;
-        C->nodes[n].dt = C->node_defaults.dt;
-        C->nodes[n].dx = C->node_defaults.dx;
+      const char *node_name = toml_key_in(nodes, n);
+      // add this node to the configuration
+      C->nodes[n].name = strdup(node_name);  // mem:sunglow
+      toml_table_t *node = toml_table_in(nodes, node_name);
+
+      if (!node) {
+        error("Invalid syntax for nodes.%s (try '%s = {}')\n", node_name);
+      }
+
+      // units
+      toml_datum_t units = toml_string_in(node, "units");
+      if (units.ok) {
+        C->nodes[n].units = units.u.s[0]; // TODO: this is a foolish way to convert a string to a char
+        free(units.u.s);
       } else {
-        toml_table_t *node = toml_table_at(nodes, n);
-        if (node) {
-          // if (!keys_ok(C, node, "node", "envelope", NULL)) {
-          //  TODO: permit nodes to have metadata, and check that dx, dt are nonzero
-          error("Table not supported for node %zu (this is a bug in Malt)\n", n);
-        } else {
-          error("Node %zu is neither a string nor a table\n", n);
-        }
+        C->nodes[n].units = C->node_defaults.units;
+      }
+
+      // dt
+      toml_datum_t dt = toml_double_in(node, "dt");
+      if (dt.ok) {
+        C-> nodes[n].dt = dt.u.d;
+      } else {
+        C->nodes[n].dt = C->node_defaults.dt;
+      }
+
+      // dx
+      toml_datum_t dx = toml_double_in(node, "dx");
+      if (dx.ok) {
+        C-> nodes[n].dx = dx.u.d;
+      } else {
+        C->nodes[n].dx = C->node_defaults.dx;
       }
     }
   }
