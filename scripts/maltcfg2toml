@@ -97,7 +97,7 @@ class MaltConfig(defaultdict):
     _deprecated = {"threads",}
     def __init__(self):
         super().__init__(dict)
-        self["nodes"] = []
+        self["nodes"] = {}
         self._legacy_defaults = {}
     def set_simple(self, key, value):
         value = self._key_types[key](value)
@@ -139,9 +139,10 @@ class MaltConfig(defaultdict):
                     node_data[k] = value
             # do nothing for previously defaulted values, since they are still defaulted
         if len(node_data) == 1:
-            self["nodes"].append(node_name)
+            self["nodes"][node_name] = True
         else:
-            self["nodes"].append(node_data)
+            self["nodes"][node_name] = node_data[:]
+            del self["nodes"][node_name]["node"]
     def add_param(self, param_data):
         if "sig_abs" in param_data:
             raise Exception("Obsolete malt.config key sig_abs, use sigma/sig_pct instead!")

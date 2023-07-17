@@ -340,10 +340,12 @@ __attribute__((nonnull)) static int read_a_bool(int *dest, toml_table_t *values,
   toml_datum_t value = toml_bool_in(values, key);
   if (value.ok) {
     *dest = value.u.b;
+    return 1;
   } else if ((value = toml_int_in(values, key)).ok) {
     *dest = value.u.i;
+    return 1;
   }
-  return *dest;
+  return 0;
 }
 
 /* Reads an integer from the table `values`.
@@ -470,15 +472,25 @@ static int read_nodes(Builder *C, toml_table_t *t)
     if (C->num_nodes != 0) {
       warn("Overwriting previously configured nodes\n");
     }
-    C->num_nodes = len_nodes;
     for (int n = 0; n < len_nodes; ++n) {
       const char *node_name = toml_key_in(nodes, n);
       // add this node to the configuration
+      C->nodes[n] = C->node_defaults;
       C->nodes[n].name = strdup(node_name);  // mem:sunglow
       toml_table_t *node = toml_table_in(nodes, node_name);
 
       if (!node) {
-        error("Invalid syntax for nodes.%s (try '%s = {}')\n", node_name);
+        int value = 0;
+        if (read_a_bool(&value, nodes, node_name)) {
+          if (value == 0) {
+            // skip this one
+            --len_nodes;
+            --n;
+          }
+          continue;
+        } else {
+          error("Invalid syntax for nodes.'%s' (try '%s' = true)\n", node_name, node_name);
+        }
       }
 
       // units
@@ -486,26 +498,21 @@ static int read_nodes(Builder *C, toml_table_t *t)
       if (units.ok) {
         C->nodes[n].units = units.u.s[0]; // TODO: this is a foolish way to convert a string to a char
         free(units.u.s);
-      } else {
-        C->nodes[n].units = C->node_defaults.units;
       }
 
       // dt
       toml_datum_t dt = toml_double_in(node, "dt");
       if (dt.ok) {
         C-> nodes[n].dt = dt.u.d;
-      } else {
-        C->nodes[n].dt = C->node_defaults.dt;
       }
 
       // dx
       toml_datum_t dx = toml_double_in(node, "dx");
       if (dx.ok) {
         C-> nodes[n].dx = dx.u.d;
-      } else {
-        C->nodes[n].dx = C->node_defaults.dx;
       }
     }
+    C->num_nodes = len_nodes;
   }
   return len_nodes;
 }
