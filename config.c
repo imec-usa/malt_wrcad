@@ -101,10 +101,10 @@ static void builder_debug(const Builder *B, FILE *fp)
   for (int i = 0; i < B->num_nodes; ++i) {
     if (B->nodes[i].dt == B->node_defaults.dt && B->nodes[i].dx == B->node_defaults.dx) {
       // empty table
-      fprintf(fp, "'%s' = {}", B->nodes[i].name);
+      fprintf(fp, "'%s' = {}\n", B->nodes[i].name);
     } else {
       // inline table
-      fprintf(fp, "'%s' = { dt = %g, dx = %g }", B->nodes[i].name, B->nodes[i].dt, B->nodes[i].dx);
+      fprintf(fp, "'%s' = { dt = %g, dx = %g }\n", B->nodes[i].name, B->nodes[i].dt, B->nodes[i].dx);
     }
   }
 
