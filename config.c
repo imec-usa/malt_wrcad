@@ -1134,7 +1134,7 @@ Configuration *Configure(const Args *args, FILE *log)
   // 4. Find input filenames {circuit, param, envelope, passfail}
   B.file_names.circuit = most_specific_with_ext(&B.project_tree, B.extensions.circuit);
   B.file_names.param = find_file_by_type(&B, Ft_Parameters);
-  B.file_names.passf = find_file_by_type(&B, Ft_PassFail);
+  B.file_names.passf = most_specific_with_ext(&B.project_tree, B.extensions.passf);
   B.file_names.envelope = find_file_by_type(&B, Ft_Envelope);
   B.file_names.env_call = find_file_by_type(&B, Ft_EnvCall);
 

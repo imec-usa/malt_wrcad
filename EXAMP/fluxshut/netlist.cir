@@ -14,7 +14,7 @@
 .param timingX = 1.0
 .global 0
 * Include Statements
-.include my_models_spice.mod
+.include my_models.lib
 *Subcircuits
 .subckt aa_fluxshut a i0 i1 q
 XL0 a i0 rql_inductor_scale l=7.4e-12
