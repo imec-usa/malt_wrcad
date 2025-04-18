@@ -42,12 +42,11 @@ void plot2(Configuration *C, Space *S)
   FILE *strm;
 
   /* write the gnuplot script to a file so it can be user-modified later */
-  char *gnuplot_script = resprintf(NULL, "%s.2gnu", C->command);  // mem:dispiece
-  if ((fp = fopen(gnuplot_script, "w")) == NULL) {
-    fprintf(stderr, "Can't write to the '%s' file", gnuplot_script);
-    exit(EXIT_FAILURE);
-  }
-  fprintf(fp, "# Gnuplot script\n# User-editable\n# Run 'gnuplot %s.2gnu'\n\n", C->command);
+  fp = new_file_by_type(C, Ft_Gnuplot);
+
+  const char *scriptname = malt_filename(C, Ft_Gnuplot);
+  info("Writing Gnuplot script to '%s'\n", scriptname);
+  fprintf(fp, "# Gnuplot script\n# User-editable\n# Run 'gnuplot %s'\n\n", scriptname);
   fprintf(fp, "set size 0.75, 1.00\nunset key\n\n");
   /* for each plot... */
   for (i = 0; C->num_2D > i; ++i) {
@@ -77,8 +76,8 @@ void plot2(Configuration *C, Space *S)
                be null: C->params[C->_2D[i].param_y]?"":"# ",
              */
             "", a, a, b, b, c, c);
-    fprintf(fp, "plot '%s.2' using %d:%d with linespoints lc %d pt %d\n", C->command, 2 * i + 1,
-            2 * i + 2, i + 1, i + 1);
+    fprintf(fp, "plot '%s' using %d:%d with linespoints lc %d pt %d\n", malt_filename(C, Ft_Data),
+            2 * i + 1, 2 * i + 2, i + 1, i + 1);
     /* ought to be able to say 'set term x11' instead of pause but our gnuplot is not allowing it
      * right now */
     fprintf(fp, "pause 3\n\n");
@@ -86,10 +85,9 @@ void plot2(Configuration *C, Space *S)
   fclose(fp);
   /* execute the script */
   if (!(strm = popen("gnuplot", "w"))) {
-    fprintf(stderr, "Could not run the 'gnuplot' executable\n");
+    warn("Could not run the 'gnuplot' executable\n");
   } else {
-    fprintf(strm, "load '%s'\n", gnuplot_script);
+    fprintf(strm, "load '%s'\n", scriptname);
     pclose(strm);
   }
-  free(gnuplot_script);  // mem:dispiece
 }

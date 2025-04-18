@@ -49,7 +49,9 @@ struct file_names {
   char *passf;
   char *envelope;
   char *env_call;
+  char *data;
   char *plot;
+  char *gnuplot;
   // TODO: delete these
   char *iter;
   char *pname;
@@ -62,16 +64,20 @@ struct extensions {
   const char *envelope;
   const char *env_call;
   const char *plot;
+  const char *pname;
   char *which_trace;
 };
 
 enum filetype {
   Ft_Circuit,
   Ft_Parameters,
+  Ft_Pname,
   Ft_PassFail,
   Ft_Envelope,
   Ft_EnvCall,
+  Ft_Data,
   Ft_Plot,
+  Ft_Gnuplot,
 };
 
 struct options {
@@ -130,6 +136,7 @@ typedef struct args Args;
 Configuration *Configure(const Args *args, FILE *log);
 void freeConfiguration(Configuration *C);
 
+const char *malt_filename(Configuration *C, enum filetype kind);
 FILE *new_file_by_type(Configuration *C, enum filetype kind);
 
 void unlink_pname(Configuration *C);

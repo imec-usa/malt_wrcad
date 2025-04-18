@@ -45,8 +45,8 @@ int define(Configuration *C)
       error("No circuit nodes have been defined\n");
     }
     /* *** need to check for spice executable, etc */
-    call_spice(C, 0, NULL, NULL, "define.call",
-               "define.return");  // TODO: verify these NULLs are ok ~ntj
+    char *callf = resprintf(NULL, "%s/d.call", lst_last(&C->working_tree));
+    call_spice(C, 0, NULL, NULL, callf, "no file");  // TODO: verify these NULLs are ok ~ntj
   }
   /* read the spice simulation vectors file */
   if (C->options.d_envelope) {
@@ -140,8 +140,8 @@ void spicePlot(Configuration *C)
   FILE *fp = new_file_by_type(C, Ft_Plot);
 
   /* print the file */
-  fprintf(fp, "\n.control\nload %s.nom\nload %s\nsetplot tran1\nset group\nplot", C->command,
-          C->file_names.envelope);
+  fprintf(fp, "\n.control\nload %s/nominals\nload %s\nsetplot tran1\nset group\nplot",
+          lst_last(&C->working_tree), C->file_names.envelope);
   for (i = 0; C->num_nodes > i; i++)
     fprintf(fp, " %s", C->nodes[i].name);
   fprintf(fp, "\nunset group\nset single\n");
@@ -196,7 +196,7 @@ int readData(Configuration *C, Data *D, int *scramble)
   float x;
   int ret = 1;
 
-  char *returnn = resprintf(NULL, "%s.nom", C->command);  // mem:quininic
+  char *returnn = resprintf(NULL, "%s/nominals", lst_last(&C->working_tree));  // mem:quininic
   if (!(fp = fopen(returnn, "r"))) {
     fprintf(stderr, "malt: Can not open %s\n", returnn);
     ret = 0;

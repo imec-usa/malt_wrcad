@@ -32,9 +32,6 @@ int main(int argc, char *argv[])
   /* find and parse the cascade of .toml configuration files */
   Configuration *C = Configure(&args, log);
 
-  // TODO: resolve filenames properly, instead of changing directory here, which might be confusing
-  chdir(lst_last(&C->working_tree));
-
   /* .cir */
   if (C->file_names.circuit != NULL) {
     info("SPICE (%s) file: '%s'\n", C->extensions.circuit, C->file_names.circuit);

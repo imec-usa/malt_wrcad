@@ -3,7 +3,6 @@ import argparse
 from collections import defaultdict
 import pathlib
 import re
-import pprint
 import sys
 import toml
 
@@ -61,6 +60,7 @@ class MaltConfig(defaultdict):
         "nom_max":            float,
         "nom_min":            float,
         "sig_pct":            float,
+        "sig_abs":            float,
         "sigma":              float,
         "logs":               bool_int,
         "include":            bool_int,
@@ -83,10 +83,11 @@ class MaltConfig(defaultdict):
         "nominal":  None, # 1
         "min":      None, # 0.5
         "max":      None, # 2.0
+        "sig_abs":  0.0,
         "sig_pct":  0.0,
         "sigma":    0.0,
         "logs":     True,
-        "include":  True,
+        "include":  None,
         "corners":  False,
         "static":   False,
     }
@@ -99,6 +100,8 @@ class MaltConfig(defaultdict):
         super().__init__(dict)
         self["nodes"] = {}
         self._legacy_defaults = {}
+        self._sigma_is_percent = False
+
     def set_simple(self, key, value):
         value = self._key_types[key](value)
         if key.startswith("d_"):
@@ -117,18 +120,20 @@ class MaltConfig(defaultdict):
             self["yield"][key[2:]] = value
         elif key in self._deprecated:
             print(f"Skipping deprecated/ignored option {key!r}", file=sys.stderr)
+        elif key == "sig_abs":
+            self._sigma_is_percent = True
+            self._legacy_defaults[key] = value
         elif key in self._param_defaults:
             self._legacy_defaults[key] = value
-        elif key == "sig_abs":
-            raise Exception("Obsolete malt.config key sig_abs, use sigma/sig_pct instead!")
         else:
             self[key] = value
+
     def add_node(self, node_data):
-        node_data = InlineDict(node_data)
+        node_data = {k: self._key_types[k](v) for k, v in node_data.items()}
         node_name = node_data["node"]
         for k, default in self._node_defaults.items():
             if k in node_data:
-                value = self._key_types[k](node_data[k])
+                value = node_data[k]
                 # note the difference here with param_data:
                 if value == self.get(k, default):
                     # don't save previously non-defaulted default values
@@ -141,17 +146,18 @@ class MaltConfig(defaultdict):
         if len(node_data) == 1:
             self["nodes"][node_name] = True
         else:
-            self["nodes"][node_name] = node_data[:]
+            self["nodes"][node_name] = InlineDict(node_data.copy())
             del self["nodes"][node_name]["node"]
+
     def add_param(self, param_data):
         if "sig_abs" in param_data:
-            raise Exception("Obsolete malt.config key sig_abs, use sigma/sig_pct instead!")
-        param_data = InlineDict(param_data)
+            self._sigma_is_percent = True
+        param_data = InlineDict({k: self._key_types[k](v) for k, v in param_data.items()})
         param_name = param_data["param"]
         del param_data["param"]
         for k, default in self._param_defaults.items():
             if k in param_data:
-                value = self._key_types[k](param_data[k])
+                value = param_data[k]
                 if value == default:
                     # don't save previously non-defaulted default values
                     del param_data[k]
@@ -167,6 +173,28 @@ class MaltConfig(defaultdict):
                 # do nothing for previously defaulted default values
         self["parameters"][param_name] = param_data
 
+    def add_xy(self, xy_data):
+        x = xy_data["param_x"]
+        y = xy_data["param_y"]
+        self["xy"].setdefault("sweeps", []).append(dict(x=x, y=y))
+    
+    def toml(self):
+        data = dict(self)
+        if self._sigma_is_percent:
+            for param in data["parameters"].values():
+                if (sig_pct := param.get('sigma')) is not None:
+                    param['sig_pct'] = sig_pct
+                    del param['sigma']
+                if (sigma := param.get('sig_abs')) is not None:
+                    param['sigma'] = sigma
+                    del param['sig_abs']
+        # move include to the end of the list
+        for param in data["parameters"].values():
+            include = param["include"]
+            del param["include"]
+            param["include"] = include
+        return toml.dumps(data, encoder=toml.encoder.TomlPreserveInlineDictEncoder())
+
 if __name__ == "__main__":
     args = parse_args()
     config = parse_file(args.filename)
@@ -176,11 +204,13 @@ if __name__ == "__main__":
             data.add_node(line)
         elif "param" in line:
             data.add_param(line)
+        elif "param_x" in line:
+            data.add_xy(line)
         else:
             for key, value in line.items():
                 data.set_simple(key, value)
     if args.output:
         with open(args.output, "w") as fp:
-            print(toml.dumps(dict(data), encoder=toml.encoder.TomlPreserveInlineDictEncoder()), file=fp)
+            print(data.toml(), file=fp)
     else:
-        print(toml.dumps(dict(data), encoder=toml.encoder.TomlPreserveInlineDictEncoder()))
+        print(data.toml())

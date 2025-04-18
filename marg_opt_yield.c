@@ -110,9 +110,9 @@ static pid_t start_addpoint(const Configuration *C, const Space *S, addpoint_t *
   double dist = sqrt(dist2) / C->options.binsearch_accuracy;
 
   state->returnn =
-      resprintf(NULL, "%s.%c.%d.return", C->command, C->function, state->ord);  // mem:kamleika
+      resprintf(NULL, "%s/%c_%d.return", lst_last((list_t *)&C->working_tree), C->function, state->ord);  // mem:kamleika
   state->call =
-      resprintf(NULL, "%s.%c.%d.call", C->command, C->function, state->ord);  // mem:workmanships
+      resprintf(NULL, "%s/%c_%d.call", lst_last((list_t *)&C->working_tree), C->function, state->ord);  // mem:workmanships
   /* write .call file, call spice */
   state->pid = start_spice(C, dist, state->pc, po, state->call, state->returnn);
   free(po);  // mem:hyperplastic
@@ -162,8 +162,10 @@ static int addpoint_done(const Configuration *C, double *pr_temp, int *ord, addp
 
   // clean up
   fclose(fp);
-  unlink(state->call);
-  unlink(state->returnn);
+  if (!C->keep_files) {
+    unlink(state->call);
+    unlink(state->returnn);
+  }
   free(state->call);  // mem:workmanships
   state->call = NULL;
   free(state->returnn);  // mem:kamleika
@@ -310,8 +312,13 @@ double addpoint_corners(const Configuration *C, const Space *S, corner_t *cornmi
     if (0 == addpoint_done(C, pr_temp, &ord, &jobs[j])) {
       // set result to 0.0
       // don't print this error for optimize, cause it is only just a convexity thing
-      if (C->function != 'o')
-        fprintf(stderr, "Circuit failed at nominal (%s:%d)\n", __FILE__, __LINE__);
+      if (C->function != 'o') {
+        lprintf(C, "Circuit failed at nominal for corner ");
+        for (j = 0; j < K; j++) {
+          lprintf(C, "%s", ord & (1 << j) ? "H" : "L");
+        }
+        lprintf(C, "\n");
+      }
       f_min = 0.0;
       // but keep waiting for the rest of the jobs
       continue;
@@ -449,6 +456,13 @@ int tmargins(Configuration *C, const Space *S)
   int i, j, k;
   int ret = 0;
 
+  /* TODO: set up p_return and f_return in call_spice.c so that they include the job number.
+   * Tweak the trace routine so that it plots the file associated with the minimum corner.
+   * Then delete this check. */
+  if (N + K > N) {
+    error("Trace routine cannot run across corners; consider setting parameters manually\n");
+  }
+
   /* Trace Margins */
   lprintf(C, "\nTrace Margins");
   lprintf(C, "\nParameter                Low     Nominal       High\n");
@@ -467,7 +481,7 @@ int tmargins(Configuration *C, const Space *S)
     /* upper margin */
     if (C->params[i].top_max) {
       strcpy(C->extensions.which_trace, C->params[i].name);
-      strcat(C->extensions.which_trace, ".max");
+      strcat(C->extensions.which_trace, "_max");
       direction[i] = -1.0;
       if (addpoint_corners(C, S, NULL, pr, pc, direction) == 0.0) {
         fprintf(stderr, "Circuit failed for nominal parameter values\n");
@@ -478,7 +492,7 @@ int tmargins(Configuration *C, const Space *S)
     /* lower margin */
     if (C->params[i].top_min) {
       strcpy(C->extensions.which_trace, C->params[i].name);
-      strcat(C->extensions.which_trace, ".min");
+      strcat(C->extensions.which_trace, "_min");
       direction[i] = 1.0;
       if (addpoint_corners(C, S, NULL, pr, pc, direction) == 0.0) {
         fprintf(stderr, "Circuit failed for nominal parameter values\n");
@@ -505,19 +519,18 @@ int tmargins(Configuration *C, const Space *S)
   /* make a spice control file to plot all this stuff */
   FILE *fp = new_file_by_type(C, Ft_Plot);
   /* which plots to plot */
-  fprintf(fp, "\n.control\n\n* which plots to plot\nnominal  = 1\nmax_min  = 1\nenvelope = 1\n\n");
+  fprintf(fp, "\n.control\n\n* which plots to plot\nnominal  = 0\nmax_min  = 0\nenvelope = 1\n\n");
   /* load the plots */
-  /* the .nom file has the same base as the .envelope file, */
-  fprintf(fp, "load %s.nom\nload %s\n", C->command, C->file_names.envelope);
+  const char *wd = lst_last(&C->working_tree);
+  /* the nominals file has the same base as the .envelope file, */
+  fprintf(fp, "load %s/nominals\nload %s\n", wd, C->file_names.envelope);
   for (i = 0; N > i; ++i) {
     /* upper margin */
     if (C->params[i].top_max)
-      fprintf(fp, "load %s.%s.max.pass\nload %s.%s.max.fail\n", C->command, C->params[i].name,
-              C->command, C->params[i].name);
+      fprintf(fp, "load %1$s/%2$s_max.pass\nload %1$s/%2$s_max.fail\n", wd, C->params[i].name);
     /* lower margin */
     if (C->params[i].top_min)
-      fprintf(fp, "load %s.%s.min.pass\nload %s.%s.min.fail\n", C->command, C->params[i].name,
-              C->command, C->params[i].name);
+      fprintf(fp, "load %1$s/%2$s_min.pass\nload %1$s/%2$s_min.fail\n", wd, C->params[i].name);
   }
   /* nominal */
   fprintf(
@@ -546,31 +559,40 @@ int tmargins(Configuration *C, const Space *S)
   fprintf(fp, "\nendif\n\n");
   /* envelope */
   fprintf(fp, "unset group\nset single\nif envelope\n");
-  fprintf(fp, "set color2 = \"black\"\n");
-  fprintf(fp, "set color3 = \"blue\"\n");
-  fprintf(fp, "set color4 = \"black\"\n");
-  fprintf(fp, "set color5 = \"green\"\n");
-  fprintf(fp, "set color6 = \"red\"\n");
-  fprintf(fp, "set color7 = \"green\"\n");
-  fprintf(fp, "set color8 = \"red\"\n");
+  fprintf(fp, "set color6 = \"blue\"\n");
+  fprintf(fp, "set color7 = \"black\"\n");
+  fprintf(fp, "set color8 = \"blue\"\n");
+  fprintf(fp, "set color2 = \"green\"\n");
+  fprintf(fp, "set color3 = \"red\"\n");
+  fprintf(fp, "set color4 = \"LimeGreen\"\n");
+  fprintf(fp, "set color5 = \"OrangeRed\"\n");
   for (k = 3, i = 0; N > i; ++i) {
     for (j = 0; C->num_nodes > j; ++j) {
-      fprintf(fp, "\nset title = \"param = %s, node = %s\"\n", C->params[i].name, C->nodes[j].name);
-      fprintf(fp, "plot \\\ntran2.hi%d \\\ntran1.%s \\\ntran2.lo%d", j, C->nodes[j].name, j);
-      /* lower or upper margin */
-      fprintf(fp, " \\\ntran%d.%s \\\ntran%d.%s", k, C->nodes[j].name, k + 1, C->nodes[j].name);
-      /* both lower and upper margin */
-      if (C->params[i].top_min && C->params[i].top_max) {
-        fprintf(fp, " \\\ntran%d.%s \\\ntran%d.%s", k + 2, C->nodes[j].name, k + 3,
-                C->nodes[j].name);
+      fprintf(fp, "\nset title = \"%s (%s margin)\"\n", C->nodes[j].name, C->params[i].name);
+      fprintf(fp, "setplot tran1\n"
+                  "let max = tran2.hi%1$d\n"
+                  "let min = tran2.lo%1$d\n", j);
+      if (C->params[i].top_max) {
+        fprintf(fp, "let %1$s_hi = tran%3$d.%2$s\n"
+                    "let %1$s_over = tran%4$d.%2$s\n", C->params[i].name, C->nodes[j].name, k, k + 1);
       }
+      if (C->params[i].top_min) {
+        fprintf(fp, "let %1$s_lo = tran%3$d.%2$s\n"
+                    "let %1$s_under = tran%4$d.%2$s\n", C->params[i].name, C->nodes[j].name, k + 2, k + 3);
+      }
+      fprintf(fp, "plot");
+      if (C->params[i].top_max) {
+        fprintf(fp, " %1$s_hi %1$s_over", C->params[i].name);
+      }
+      if (C->params[i].top_min) {
+        fprintf(fp, " %1$s_lo %1$s_under", C->params[i].name);
+      }
+      fprintf(fp, " max %s min\n", C->nodes[j].name);
     }
-    k += 2;
-    if (C->params[i].top_min && C->params[i].top_max)
-      k += 2;
+    k += 2*(!!C->params[i].top_max + !!C->params[i].top_min);
     fprintf(fp, "\n");
   }
-  fprintf(fp, "endif\n\n.endc\n");
+  fprintf(fp, "endif\nset noaskquit\n.endc\n");
   fclose(fp);
   ret = 1;
 fail:

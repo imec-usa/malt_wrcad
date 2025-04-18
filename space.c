@@ -68,7 +68,7 @@ int initspace(Configuration *C, Space *S)
     C->params[i].nom_min = maltspace(C->params[i].nom_min, C, i);
     C->params[i].nom_max = maltspace(C->params[i].nom_max, C, i);
     /* define the hi/lo corners that will be used for corners-distributed params */
-    /* in corner analysis. The +/-1.0 is the value of 1-sig_pct in malt-space */
+    /* in corner analysis. */
     S[i].cornerlo = C->params[i].min;
     S[i].cornerhi = C->params[i].max;
   }

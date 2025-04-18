@@ -45,14 +45,8 @@ static int generic_spice_files(const Configuration *C)
 /* remake pname file whenever included/excluded parameters change */
 void pname(Configuration *C)
 {
-  FILE *fp;
-
-  resprintf(&C->file_names.pname, "%s.pname.%c", C->command, C->function);
-  if ((fp = fopen(C->file_names.pname, "w")) == NULL) {
-    fprintf(stderr, "malt: Cannot write to the '%s' file", C->file_names.pname);
-    exit(EXIT_FAILURE);
-  }
-  fprintf(fp, "* %s\n\n.control\n\n", C->file_names.pname);
+  FILE *fp = new_file_by_type(C, Ft_Pname);
+  fprintf(fp, "* %s\n\n.control\n\n", malt_filename(C, Ft_Pname));
   for (int i = 0; C->num_params_all > i; ++i) {
     fprintf(fp, "%s = param[%i]\n", C->params[i].name, i + 1);
   }
@@ -91,7 +85,7 @@ pid_t start_spice(const Configuration *C, double accuracy, double *pc, double *p
   fprintf(fp, "set circuit = ( %s )\n", C->file_names.circuit);
   fprintf(fp, "set param   = ( %s )\n", (C->file_names.param) ? C->file_names.param : "no file");
   fprintf(fp, "set passf   = ( %s )\n", (C->file_names.passf) ? C->file_names.passf : "no file");
-  fprintf(fp, "set pname   = ( %s )\n", C->file_names.pname);
+  fprintf(fp, "set pname   = ( %s )\n", malt_filename((Configuration*)C, Ft_Pname));
   fprintf(fp, "set return  = ( %s )\n", returnn);
   /* node math is legal (i.e. v(1)-v(2)) */
   /* ...so long as the component vectors also appear individually */
@@ -111,14 +105,15 @@ pid_t start_spice(const Configuration *C, double accuracy, double *pc, double *p
     if (dasht == 1)
       dasht = 2;
     // TODO: find out if this is a data hazard for multiprocessing ~ntj
-    fprintf(fp, "set n_return  = ( %s.nom )\n", C->command);
-    fprintf(fp, "set p_return  = ( %s.%s.pass )\n", C->command, C->extensions.which_trace);
-    fprintf(fp, "set f_return  = ( %s.%s.fail )\n", C->command, C->extensions.which_trace);
+    const char *wd = lst_last((list_t*)&C->working_tree);
+    fprintf(fp, "set n_return  = ( %s/nominals )\n", wd);
+    fprintf(fp, "set p_return  = ( %s/%s.pass )\n", wd, C->extensions.which_trace);
+    fprintf(fp, "set f_return  = ( %s/%s.fail )\n", wd, C->extensions.which_trace);
   } else if (C->function != 'd')
     fprintf(fp, "dasht = 0\n");
   /* * * define routine (or not) * * */
   if (C->function == 'd') {
-    fprintf(fp, "set n_return  = ( %s.nom )\n", C->command);
+    fprintf(fp, "set n_return  = ( %s/nominals )\n", lst_last((list_t*)&C->working_tree));
     /* nominal parameter values */
     for (i = 0; C->num_params_all > i; ++i)
       fprintf(fp, "param[%i]=%g\n", i + 1, C->params[i].nominal);

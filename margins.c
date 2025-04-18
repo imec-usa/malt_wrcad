@@ -150,34 +150,39 @@ int margins2(Configuration *C)
     }
   }
   /* print the file */
+  FILE *fp = new_file_by_type(C, Ft_Data);
+#define PRINT(...)          \
+{                           \
+  lprintf(C, ##__VA_ARGS__);  \
+  fprintf(fp, ##__VA_ARGS__); \
+}
   /* names */
-  lprintf(C, "# ");
+  PRINT("# ");
   for (i = 0; i < C->num_2D; i++) {
-    lprintf(C, "(%-8.8s %-8.8s)", C->params[C->_2D[i].param_x].name,
+    PRINT("(%-8.8s %-8.8s)", C->params[C->_2D[i].param_x].name,
             C->params[C->_2D[i].param_y].name);
   }
   // clang-format off
-    lprintf(C, "\n");  // FIXME: should be in the for loop by indentation? ~ntj
+  PRINT("\n");
   /* points */
   for (j = 0; j <= C->options._2D_iter; j++) {
     for (i = 0; i < C->num_2D; i++) {
-      lprintf(C, "  %8.3e %8.3e",
+      PRINT("  %8.3e %8.3e",
               physspace(pointsx[i][j], C, C->_2D[i].param_x),
               physspace(pointsy[i][j], C, C->_2D[i].param_y));
     }
-    lprintf(C, "\n");
+    PRINT("\n");
   }
   /* nominal points */
-  lprintf(C, "\n");
+  PRINT("\n");
   for (i = 0; i < C->num_2D; i++) {
-    lprintf(C, "  %8.3e %8.3e",
+    PRINT("  %8.3e %8.3e",
             physspace(S[C->_2D[i].param_x].centerpnt, C, C->_2D[i].param_x),
             physspace(S[C->_2D[i].param_y].centerpnt, C, C->_2D[i].param_y));
   }
   // clang-format on
-  lprintf(C, "\n");
-  /* flush the data file */
-  /* term_file_flush(C); */
+  PRINT("\n");
+  fclose(fp);
   /* gnuplot the data */
   plot2(C, S);
   /* remove temp files */
@@ -247,7 +252,12 @@ int call_trace(Configuration *C)
   /* do it */
   all_good = tmargins(C, S);
   /* clean up temporary files */
-  /*cleanup:*/
   unlink_pname(C);
-  return all_good;
+  /* call spice to plot things */
+  if (all_good) {
+    
+    execlp(C->options.spice_call_name, "wrspice", malt_filename(C, Ft_Plot), (char *)NULL);
+    error("malt: execlp returned unexpectedly");
+  }
+  return 0;
 }

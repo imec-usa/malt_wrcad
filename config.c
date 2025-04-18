@@ -94,14 +94,15 @@ static void builder_debug(const Builder *B, FILE *fp)
   comment("Nodes");
   section("nodes");
   comment("Node names with embedded punctuation should be enclosed in double quotes.");
-  comment("dx, dt may be specified here per node or globally in [envelope]");
+  comment("Use `true` or `false` to indicate whether to include the node in automated checking.");
+  comment("You may use a table instead of `true` to override the global [envelope] settings.");
   comment("Examples:");
-  comment("'v(phi.node0)' = {}");
+  comment("'v(phi.node0)' = true");
   comment("'v(phi.node1)' = { dt = 1e-10, dx = 1.0 }]");
   for (int i = 0; i < B->num_nodes; ++i) {
     if (B->nodes[i].dt == B->node_defaults.dt && B->nodes[i].dx == B->node_defaults.dx) {
       // empty table
-      fprintf(fp, "'%s' = {}\n", B->nodes[i].name);
+      fprintf(fp, "'%s' = true\n", B->nodes[i].name);
     } else {
       // inline table
       fprintf(fp, "'%s' = { dt = %g, dx = %g }\n", B->nodes[i].name, B->nodes[i].dt, B->nodes[i].dx);
@@ -241,6 +242,7 @@ void freeConfiguration(Configuration *C)
   free(C->file_names.envelope);              // mem:cool
   free(C->file_names.env_call);              // mem:semishady
   free(C->file_names.plot);                  // mem:federalizes
+  free(C->file_names.gnuplot);
   free(C->file_names.iter);                  // mem:myrcene
   free(C->file_names.pname);                 // mem:physnomy
   free(C->extensions.which_trace);           // mem:intratubal
@@ -282,7 +284,9 @@ static void builder_init(Builder *C, const Args *args, FILE *log)
   C->file_names.passf = NULL;
   C->file_names.envelope = NULL;
   C->file_names.env_call = NULL;
+  C->file_names.data = NULL;
   C->file_names.plot = NULL;
+  C->file_names.gnuplot = NULL;
   C->file_names.iter = NULL;
   C->file_names.pname = NULL;
   /* node defaults */
@@ -304,6 +308,7 @@ static void builder_init(Builder *C, const Args *args, FILE *log)
   C->extensions.envelope = ".envelope";
   C->extensions.env_call = ".env_call";
   C->extensions.plot = ".plot";
+  C->extensions.pname = ".pname";
   /* pretty weak */
   C->extensions.which_trace = malloc(LINE_LENGTH);  // mem:intratubal
   /* options */
@@ -465,7 +470,7 @@ static int read_nodes(Builder *C, toml_table_t *t)
     if (!C->has_envelope) {
       error("Missing [envelope] in TOML file containing nodes table\n");
     }
-    len_nodes = toml_table_nkval(nodes);
+    len_nodes = toml_table_nkval(nodes) + toml_table_ntab(nodes);
     // overwrite nodes if already specified by earlier configurations
     // FIXME: clobbering leaks memory for .name
     C->nodes = realloc(C->nodes, len_nodes * sizeof *C->nodes);
@@ -826,18 +831,80 @@ static const char *file_extension_by_type(const struct extensions *e, enum filet
     return e->circuit;
   case Ft_Parameters:
     return e->param;
+  case Ft_Pname:
+    return e->pname;
   case Ft_PassFail:
     return e->passf;
   case Ft_Envelope:
     return e->envelope;
   case Ft_EnvCall:
     return e->env_call;
+  case Ft_Data:
+    return ".txt";
   case Ft_Plot:
     return e->plot;
+  case Ft_Gnuplot:
+    return ".gpi";
   default:
     fprintf(stderr, "Internal error (%d is not a file type)", ftype);
     exit(EXIT_FAILURE);
   }
+}
+
+/* Returns the filename (including full path) of the relevant `ftype` for this invocation of Malt.
+ */
+const char *malt_filename_x(const struct extensions *extensions, struct file_names *file_names, const list_t *working_tree, char function, enum filetype ftype)
+{
+  const char *ext = file_extension_by_type(extensions, ftype);
+
+  char **filename;
+  switch (ftype) {
+  case Ft_Circuit:
+    filename = &file_names->circuit;
+    break;
+  case Ft_Parameters:
+    filename = &file_names->param;
+    break;
+  case Ft_Pname:
+    filename = &file_names->pname;
+    break;
+  case Ft_PassFail:
+    filename = &file_names->passf;
+    break;
+  case Ft_Envelope:
+    filename = &file_names->envelope;
+    break;
+  case Ft_EnvCall:
+    filename = &file_names->env_call;
+    break;
+  case Ft_Data:
+    filename = &file_names->data;
+    break;
+  case Ft_Plot:
+    filename = &file_names->plot;
+    break;
+  case Ft_Gnuplot:
+    filename = &file_names->gnuplot;
+    break;
+  default:
+    fprintf(stderr, "Internal error (%d is not a file type)", ftype);
+    exit(EXIT_FAILURE);
+  }
+
+  // set the new filename
+  if (*filename == NULL) {
+    if (ftype >= Ft_Data) {
+      resprintf(filename, "%s/%c%s", lst_last((list_t *)working_tree), function, ext);
+    } else {
+      resprintf(filename, "%s/the%s", lst_last((list_t *)working_tree), ext);
+    }
+  }
+
+  return *filename;
+}
+
+const char *malt_filename(Configuration *C, enum filetype ftype) {
+  return malt_filename_x(&C->extensions, &C->file_names, &C->working_tree, C->function, ftype);
 }
 
 /* Creates a NEW file of `ftype` in the immediate working directory, setting the appropriate entry
@@ -846,41 +913,13 @@ static const char *file_extension_by_type(const struct extensions *e, enum filet
  * Returns a pointer to the opened FILE, or aborts if fopen fails. */
 FILE *new_file_by_type(Configuration *C, enum filetype ftype)
 {
-  const char *ext = file_extension_by_type(&C->extensions, ftype);
-
-  char **filename;
-  switch (ftype) {
-  case Ft_Circuit:
-    filename = &C->file_names.circuit;
-    break;
-  case Ft_Parameters:
-    filename = &C->file_names.param;
-    break;
-  case Ft_PassFail:
-    filename = &C->file_names.passf;
-    break;
-  case Ft_Envelope:
-    filename = &C->file_names.envelope;
-    break;
-  case Ft_EnvCall:
-    filename = &C->file_names.env_call;
-    break;
-  case Ft_Plot:
-    filename = &C->file_names.plot;
-    break;
-  default:
-    error("Internal error (%d is not a file type)", ftype);
-  }
-
-  // set the new filename, clobbering what was in file_names (if any)
-  char *cwd = getcwd(NULL, 0);
-  resprintf(filename, "%s/the%s", cwd, ext);
-  free(cwd);
+  const char *filename = malt_filename(C, ftype);
 
   // open the file for writing
-  FILE *ptr = fopen(*filename, "w");
+  FILE *ptr = fopen(filename, "w");
   if (ptr == NULL) {
-    error("Can not open the %s file '%s'\n", ext, *filename);
+    const char *ext = file_extension_by_type(&C->extensions, ftype);
+    error("Cannot open the %s file (%s) for writing\n", ext, filename);
   }
   return ptr;
 }
@@ -1132,11 +1171,19 @@ Configuration *Configure(const Args *args, FILE *log)
   free(logname);
 
   // 4. Find input filenames {circuit, param, envelope, passfail}
+  // these ones are provided only by the user
   B.file_names.circuit = most_specific_with_ext(&B.project_tree, B.extensions.circuit);
-  B.file_names.param = find_file_by_type(&B, Ft_Parameters);
+  B.file_names.param = most_specific_with_ext(&B.project_tree, B.extensions.param);;
   B.file_names.passf = most_specific_with_ext(&B.project_tree, B.extensions.passf);
-  B.file_names.envelope = find_file_by_type(&B, Ft_Envelope);
-  B.file_names.env_call = find_file_by_type(&B, Ft_EnvCall);
+  // these ones may be written by Malt, but we'll check in the project tree too, in case
+  if (B.function == 'd') {
+    // when defining, these ones are always created, not located.
+    B.file_names.envelope = (char *)malt_filename_x(&B.extensions, &B.file_names, &B.working_tree, B.function, Ft_Envelope);
+    B.file_names.env_call = (char *)malt_filename_x(&B.extensions, &B.file_names, &B.working_tree, B.function, Ft_EnvCall);
+  } else {
+    B.file_names.envelope = find_file_by_type(&B, Ft_Envelope);
+    B.file_names.env_call = find_file_by_type(&B, Ft_EnvCall);
+  }
 
   // 5. Write config to output TOML file
   char *filename = resprintf(NULL, "%s/%c.toml", working_dir, B.function);
