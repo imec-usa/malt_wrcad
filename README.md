@@ -6,10 +6,14 @@ is named in honor of Malthus, who was the first to describe systems in which
 the demand for resources grows exponentially, while the resources themselves
 grow linearly. See the manual in the DOC/ directory for more detail.
 
+Obtain the current source code by cloning the Github repository:
+
+    $ git clone https://github.com/imec-usa/malt_wrcad.git
+
 Build Instructions
 ------------------
 
-Build dependency is CMake >=2.8.
+Building Malt requires CMake >=2.8.
 
 From the top level directory,
 
@@ -33,7 +37,7 @@ Release Notes
 
 * Greatly updated documentation and examples.
 
-* Malt now creates all temporary files in the _malt working tree.
+* Malt now creates all temporary files in the `_malt` working tree.
 
 * Includes in `.cir` files are once again correctly handled with respect to the
   current working directory.
