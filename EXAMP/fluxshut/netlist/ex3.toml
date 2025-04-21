@@ -1,0 +1,13 @@
+[parameters]
+Xlcomp = { nominal = 1.0, min = 0.3, max = 3.0, sig_pct = 4.0}
+Xjcomp = { nominal = 1.0, min = 0.3, max = 3.0, sig_pct = 4.0}
+
+[xy]
+iterations = 32
+[[xy.sweeps]]
+x = "Xlcomp"
+y = "Xjcomp"
+
+[[xy.sweeps]]
+x = "inoff"
+y = "inipp"

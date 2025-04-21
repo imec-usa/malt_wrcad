@@ -1,0 +1,24 @@
+# Configuration for netlist.cir
+[nodes]
+"v(phi.Xb0)" = {}
+"v(phi.Xb0.XI1)" = {}
+"v(phi.Xb1.XI12)" = {}
+
+[parameters]
+Xlcomp = 1.0
+Xjcomp = 1.0
+Xac = { nominal = 1.0, min = 0.3, max = 1.7, logs = false, sig_pct = 4.0 }
+Xpdc = { nominal = 1.0, min = 0.3, max = 1.7, logs = false, nom_min = 1.0, nom_max = 1.0, sig_pct = 4.0 }
+inoff = { nominal = 0.0, min = -1.0, max = 1.0, logs = false, sigma = 0.04 }
+inipp = { nominal = 1.0, min = 0.0, max = 3.0, logs = false, sigma = 0.04 }
+b0 = { nominal = 0.08, min = 0.03, max = 0.3, sig_pct = 4.0 }
+l0 = { nominal = 5.0, min = 1.5, max = 15.0, sig_pct = 4.0 }
+b1 = 0.018
+b2 = 0.07
+b34 = 0.04
+l45 = 30.0
+
+[envelope]
+dx = 2.0
+dt = 4e-11
+

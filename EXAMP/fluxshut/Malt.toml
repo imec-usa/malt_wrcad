@@ -1,0 +1,26 @@
+### Malt Configuration File ###
+
+# General Options
+# (These options must precede any [section] in this file)
+binsearch_accuracy = 0.1  # fraction of sigma
+print_terminal = true
+
+# Simulator options
+[simulator]
+max_subprocesses = 0
+command = 'wrspice'
+verbose = false
+
+# File extensions used by Malt
+[extensions]
+circuit = '.cir'
+parameters = '.param'
+passfail = '.passf'
+envelope = '.envelope'
+env_call = '.env_call'
+plot = '.plot'
+
+# Options for defining correct circuit operation
+[define]
+simulate = true
+envelope = true

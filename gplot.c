@@ -45,7 +45,7 @@ void plot2(Configuration *C, Space *S)
   fp = new_file_by_type(C, Ft_Gnuplot);
 
   const char *scriptname = malt_filename(C, Ft_Gnuplot);
-  info("Writing Gnuplot script to '%s'\n", scriptname);
+  //info("Writing Gnuplot script to '%s'\n", scriptname);
   fprintf(fp, "# Gnuplot script\n# User-editable\n# Run 'gnuplot %s'\n\n", scriptname);
   fprintf(fp, "set size 0.75, 1.00\nunset key\n\n");
   /* for each plot... */
@@ -90,4 +90,6 @@ void plot2(Configuration *C, Space *S)
     fprintf(strm, "load '%s'\n", scriptname);
     pclose(strm);
   }
+  // display the script path for the user's benefit
+  lprintf(C, "Gnuplot script saved as %s\n", scriptname);
 }

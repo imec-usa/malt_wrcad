@@ -1,5 +1,0 @@
-* define some parameters
-.control
-Xlcomp=Xljcomp
-Xjcomp=Xljcomp
-.endc
